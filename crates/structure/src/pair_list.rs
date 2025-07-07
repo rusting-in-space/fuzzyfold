@@ -3,10 +3,13 @@ use std::convert::TryFrom;
 use crate::pair_table::PairTable;
 use crate::error::StructureError;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Pair(pub usize, pub usize);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairList {
     pub length: usize,
-    pub pairs: Vec<(usize, usize)>,
+    pub pairs: Vec<Pair>,
 }
 
 impl TryFrom<&PairTable> for PairList {
@@ -28,7 +31,7 @@ impl TryFrom<&PairTable> for PairList {
                 match pt.get(j) {
                     Some(&Some(k)) if k == i => {
                         if i < j {
-                            pairs.push((i + 1, j + 1));
+                            pairs.push(Pair(i + 1, j + 1));
                         }
                     }
                     _ => return Err(StructureError::UnmatchedOpen(i)),
@@ -53,6 +56,6 @@ mod tests {
         let pl = PairList::try_from(&pt).unwrap();
 
         assert_eq!(pl.length, 6);
-        assert_eq!(pl.pairs, vec![(1, 6), (2, 5)]); // 1-based
+        assert_eq!(pl.pairs, vec![Pair(1, 6), Pair(2, 5)]); // 1-based
     }
 }
