@@ -17,21 +17,21 @@ Current focus:
 * crates/structure/loop_index.rs
 * crates/structure/pair_list.rs
 
+- crates/domainlevel/rules/
 * crates/domainlevel/complex.rs
+* crates/domainlevel/complexregistry.rs
+* crates/domainlevel/enumerate.rs
+- crates/domainlevel/reactions.rs
 * crates/domainlevel/utils.rs
 
-next steps: 
-- crates/domainlevel/rules/
-- crates/domainlevel/reaction.rs
+Integrate ACFPs? still some more work!
+- crates/domainlevel/checks/...
 - crates/domainlevel/acfps.rs
+- crates/domainlevel/segments.rs
+
 
 consider:
 - crates/structure/ring_list.rs
 - crates/structure/tree.rs
-
 - crates/reactions/network.rs
 
-utils/parsing.rs
-utils/cycledetection.rs
-utils/nussinov.rs
-acfp/

@@ -21,7 +21,6 @@ impl DerefMut for PairTable {
     }
 }
 
-
 impl TryFrom<&str> for PairTable {
     type Error = StructureError;
 

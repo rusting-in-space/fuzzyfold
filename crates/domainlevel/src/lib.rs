@@ -4,6 +4,7 @@ mod utils;
 mod reactions;
 mod enumerate;
 mod acfps;
+mod segments;
 
 mod rules;
 mod checks;
@@ -14,5 +15,6 @@ pub use reactions::*;
 pub use enumerate::*;
 pub use utils::*;
 pub use acfps::*;
+pub use segments::*;
 
 

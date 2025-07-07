@@ -1,7 +1,5 @@
 use ndarray::Array2;
-use fxhash::FxBuildHasher;
-use std::collections::HashSet;
-
+use rustc_hash::{FxHashMap, FxHashSet};
 use crate::utils::is_complement;
 
 pub fn nussinov(p: &Array2<usize>) -> Array2<usize> {
@@ -24,15 +22,37 @@ pub fn nussinov(p: &Array2<usize>) -> Array2<usize> {
     dp
 }
 
-pub fn build_pair_scores(domains: &[String]) -> Array2<usize> {
+/// Returns a pairwise score matrix for a list of domain strings.
+/// If a `lengths` dictionary is provided, it overrides the default score (1)
+/// with the entry-specific length for each domain.
+pub fn build_pair_scores(
+    domains: &[String],
+    lengths: Option<&FxHashMap<String, usize>>,
+) -> Array2<usize> {
     let n = domains.len();
     let mut p = Array2::from_elem((n, n), 0);
+
     for ((i, j), value) in p.indexed_iter_mut() {
-        assert!(*value == 0);
+        assert_eq!(*value, 0); // sanity check
+
         if is_complement(&domains[i], &domains[j]) {
-            *value = 1;
+            *value = match lengths {
+                Some(map) => {
+                    let li = map.get(&domains[i]);
+                    let lj = map.get(&domains[j]);
+
+                    // Use min of lengths if both found, fallback to one, then default to 1
+                    match (li, lj) {
+                        (Some(&li), Some(&lj)) => li.min(lj),
+                        (Some(&l), None) | (None, Some(&l)) => l,
+                        (None, None) => 1,
+                    }
+                }
+                None => 1,
+            };
         }
     }
+
     p
 }
 
@@ -136,7 +156,7 @@ pub fn traceback_all(
         }
     }
 
-    let mut seen: HashSet<Vec<(usize, usize)>, FxBuildHasher> = HashSet::default();
+    let mut seen: FxHashSet<Vec<(usize, usize)>> = FxHashSet::default();
     results
         .into_iter()
         .filter_map(|mut v| {
@@ -162,7 +182,7 @@ mod tests {
     #[test]
     fn test_pair_score_simple() {
         let domains = seq(&["a", "a*", "b", "b*", "c"]);
-        let p = build_pair_scores(&domains);
+        let p = build_pair_scores(&domains, None);
         assert_eq!(p[(0, 1)], 1);
         assert_eq!(p[(1, 0)], 1);
         assert_eq!(p[(2, 3)], 1);
@@ -173,9 +193,10 @@ mod tests {
     #[test]
     fn test_nussinov_basic_structure() {
         let sequence = seq(&["a", "a*", "b", "b*"]);
-        let p = build_pair_scores(&sequence);
+        let sm: FxHashMap<String, usize> = [("a".to_string(), 2)].into_iter().collect();
+        let p = build_pair_scores(&sequence, Some(&sm));
         let dp = nussinov(&p);
-        assert_eq!(dp[(0, 3)], 2); // a-a* and b-b*
+        assert_eq!(dp[(0, 3)], 3); // a-a* and b-b*
 
         let mut pairs: Vec<(usize, usize)> = Vec::new();
         traceback(0, sequence.len() - 1, &dp, &p, &mut pairs);
@@ -185,7 +206,7 @@ mod tests {
     #[test]
     fn test_traceback_all_variants() {
         let sequence = seq(&["a", "x", "a*"]);
-        let mut p = build_pair_scores(&sequence);
+        let mut p = build_pair_scores(&sequence, None);
         p[(0, 2)] = 1; // ensure complement
         p[(2, 0)] = 1;
         let dp = nussinov(&p);
@@ -198,7 +219,7 @@ mod tests {
     #[test]
     fn test_traceback_all_bifurcation() {
         let sequence = seq(&["a", "a*", "a", "a*"]);
-        let p = build_pair_scores(&sequence);
+        let p = build_pair_scores(&sequence, None);
         let dp = nussinov(&p);
         let all_structs = traceback_all(0, sequence.len() - 1, &dp, &p);
         println!("{:?}", all_structs);
@@ -215,7 +236,7 @@ mod tests {
     #[test]
     fn test_traceback_all_multioutput() {
         let sequence = seq(&["a", "a*", "a", "a*", "a", "a*", "a", "a*"]);
-        let p = build_pair_scores(&sequence);
+        let p = build_pair_scores(&sequence, None);
         let dp = nussinov(&p);
         let all_structs = traceback_all(0, sequence.len() - 1, &dp, &p);
         println!("{:?}", all_structs);

@@ -1,32 +1,28 @@
-use fxhash::FxBuildHasher;
 use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet};
 use nohash_hasher::IntMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use structure::{LoopInfo, LoopTable, PairTable, PairList, Pair};
 
-pub type FxSet<T> = HashSet<T, FxBuildHasher>;
-pub type FxMap<K, V> = HashMap<K, V, FxBuildHasher>;
-
 #[derive(Debug, Clone)]
 pub struct PartialOrder {
-    pairs: FxSet<Pair>,
-    precedence: FxMap<Pair, FxSet<Pair>>,   // DAG: a -> b means a < b (b is a successor)
-    predecessors: FxMap<Pair, FxSet<Pair>>, // DAG: a -> b means b < a (a is a predecessor
+    pairs: FxHashSet<Pair>,
+    precedence: FxHashMap<Pair, FxHashSet<Pair>>,   // DAG: a -> b means a < b (b is a successor)
+    predecessors: FxHashMap<Pair, FxHashSet<Pair>>, // DAG: a -> b means b < a (a is a predecessor
     pair_tables: IntMap<usize, PairTable>, // level -> pair_table
 }
 
 impl PartialOrder {
     pub fn new() -> Self {
         Self {
-            pairs: HashSet::with_hasher(FxBuildHasher::default()),
-            precedence: HashMap::with_hasher(FxBuildHasher::default()),
-            predecessors: HashMap::with_hasher(FxBuildHasher::default()),
+            pairs: FxHashSet::default(),
+            precedence: FxHashMap::default(),
+            predecessors: FxHashMap::default(),
             pair_tables: IntMap::default(),
         }
     }
 
-    pub fn egdes(&self) -> &FxSet<Pair> {
+    pub fn egdes(&self) -> &FxHashSet<Pair> {
         &self.pairs
     }
 
@@ -55,7 +51,6 @@ impl PartialOrder {
 
         let new_pairs = PairList::try_from(pair_table).expect("PairTable must be valid").pairs;
         for &pair in &new_pairs {
-            println!("my pair: {:?}", pair);
             let _ = self.pairs.insert(pair);
         }
         
@@ -68,7 +63,6 @@ impl PartialOrder {
                 let mut copy = pt.clone();
                 match apply_pair_to_pt(&mut copy, pair, &self.precedence) {
                     Ok(Some(old)) => {
-                        println!("old pair: {:?}", old);
                         if old == pair {
                             continue;
                         }
@@ -83,7 +77,7 @@ impl PartialOrder {
                     }  
                     Err(m) => {
                         // If the pair does not apply, it is not a problem here!
-                        println!("{}", m);
+                        //println!("{}", m);
                     }
                 }
             }
@@ -111,9 +105,9 @@ impl PartialOrder {
     fn dependencies_form_dag(&self) -> bool {
         fn find_cycle_dfs(
             node: &Pair,
-            graph: &FxMap<Pair, FxSet<Pair>>,
-            visited: &mut FxSet<Pair>,
-            stack: &mut FxSet<Pair>,
+            graph: &FxHashMap<Pair, FxHashSet<Pair>>,
+            visited: &mut FxHashSet<Pair>,
+            stack: &mut FxHashSet<Pair>,
         ) -> bool {
             if stack.contains(node) {
                 return true; // cycle
@@ -137,8 +131,8 @@ impl PartialOrder {
             false
         }
 
-        let mut visited = FxSet::default();
-        let mut stack = FxSet::default();
+        let mut visited = FxHashSet::default();
+        let mut stack = FxHashSet::default();
 
         for node in self.pairs.iter() {
             if find_cycle_dfs(node, &self.precedence, &mut visited, &mut stack) {
@@ -161,7 +155,6 @@ impl PartialOrder {
                 // If it applies, it must be save to apply!
                 match apply_pair_to_pt(pt, pair, &self.precedence) {
                     Ok(Some(old)) => {
-                        println!("old pair: {:?}", old);
                         progress = true;
                         if old == pair {
                             continue;
@@ -184,9 +177,9 @@ impl PartialOrder {
         queue.is_empty()
     }
 
-    pub fn pair_hierarchy(&self) -> FxMap<(usize, usize), usize> {
+    pub fn pair_hierarchy(&self) -> FxHashMap<(usize, usize), usize> {
         // Pairs with no predecessors are roots
-        let mut levels: FxMap<(usize, usize), usize> = FxMap::default();
+        let mut levels: FxHashMap<(usize, usize), usize> = FxHashMap::default();
         let mut queue: VecDeque<Pair> = self.pairs.iter()
             .filter(|e| !self.predecessors.contains_key(e))
             .copied()
@@ -222,7 +215,7 @@ impl PartialOrder {
     pub fn all_total_orders(&self) -> Vec<Vec<Pair>> {
         let mut all = Vec::new();
         let mut current = Vec::new();
-        let mut in_deg: FxMap<Pair, usize> = FxMap::default();
+        let mut in_deg: FxHashMap<Pair, usize> = FxHashMap::default();
 
         for e in &self.pairs {
             in_deg.entry(*e).or_insert(0);
@@ -234,7 +227,7 @@ impl PartialOrder {
             }
         }
 
-        let mut available: FxSet<Pair> = in_deg
+        let mut available: FxHashSet<Pair> = in_deg
             .iter()
             .filter_map(|(&e, &deg)| if deg == 0 { Some(e) } else { None })
             .collect();
@@ -244,9 +237,9 @@ impl PartialOrder {
     }
 
     fn dfs(
-        graph: &FxMap<Pair, FxSet<Pair>>,
-        in_deg: &mut FxMap<Pair, usize>,
-        available: &mut FxSet<Pair>,
+        graph: &FxHashMap<Pair, FxHashSet<Pair>>,
+        in_deg: &mut FxHashMap<Pair, usize>,
+        available: &mut FxHashSet<Pair>,
         current: &mut Vec<Pair>,
         all: &mut Vec<Vec<Pair>>,
     ) {
@@ -298,7 +291,7 @@ fn extend_pair_table(prev: &PairTable) -> PairTable {
     pt
 }
 
-fn apply_pair_to_pt(pt: &mut PairTable, pair: Pair, pred: &FxMap<Pair, FxSet<Pair>>,
+fn apply_pair_to_pt(pt: &mut PairTable, pair: Pair, pred: &FxHashMap<Pair, FxHashSet<Pair>>,
 ) -> Result<Option<Pair>, String> {
     use LoopInfo::*;
 

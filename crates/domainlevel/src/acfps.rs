@@ -3,6 +3,7 @@ use std::fmt;
 use std::error;
 use std::collections::HashMap;
 use ndarray::Array2;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use structure::{
     DotBracket,
@@ -14,8 +15,6 @@ use structure::{
 use crate::checks::{
     PartialOrder, 
     UnionFind,
-    FxMap,
-    FxSet,
     nussinov, 
     traceback_structures,
 };
@@ -24,7 +23,7 @@ use crate::checks::{
 pub struct Acfp {
     db_path: Vec<DotBracketVec>,
     pt_path: Vec<PairTable>,
-    all_pairs: FxSet<Pair>, // by convention: i < j
+    all_pairs: FxHashSet<Pair>, // by convention: i < j
     partial_order: Option<PartialOrder>,
     length: usize,
 }
@@ -38,11 +37,11 @@ impl Acfp {
         &self.pt_path
     }
 
-    pub fn all_pairs(&self) -> &FxSet<Pair> {
+    pub fn all_pairs(&self) -> &FxHashSet<Pair> {
         &self.all_pairs
     }
 
-    pub fn pair_hierarchy(&self) -> Option<FxMap<(usize, usize), usize>> {
+    pub fn pair_hierarchy(&self) -> Option<FxHashMap<(usize, usize), usize>> {
         self.partial_order.as_ref().map(|po| po.pair_hierarchy())
     }
 
@@ -143,7 +142,7 @@ impl TryFrom<&str> for Acfp {
             .map(|db| PairTable::try_from(db).unwrap())
             .collect();
 
-        let all_pairs: FxSet<Pair> = pt_path
+        let all_pairs: FxHashSet<Pair> = pt_path
             .iter()
             .flat_map(|pt| {
                 let pl = PairList::try_from(pt).unwrap();
