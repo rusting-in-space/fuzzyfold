@@ -6,6 +6,10 @@ use structure::PairTable;
 use structure::StructureError;
 use structure::DotBracketVec;
 
+//TODO: make a low-level Kernel struct that serves as I/O using 
+// * DomainRefVec
+// * DotBracketVec
+
 pub struct Complex {
     kernel: String, // this is the canonical form.
     sequence: Vec<String>,

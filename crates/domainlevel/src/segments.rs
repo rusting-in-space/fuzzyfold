@@ -1,18 +1,40 @@
 
 use std::collections::VecDeque;
+use std::convert::TryFrom;
 use rustc_hash::FxHashMap;
 use nohash_hasher::{IntSet, IntMap};
+use crate::domain::DomainRefVec;
+use crate::acfps::Acfp;
+use crate::{DomainRef, DomainRegistry};
+
+struct DomainSequence {
+    seq: DomainRefVec,
+}
+
+impl TryFrom<&Acfp> for DomainSequence {
+    type Error = String;
+
+    fn try_from(acfp: &Acfp) -> Result<Self, Self::Error> {
+        let pairh = acfp.pair_hierarchy().unwrap();
+        let ccomp = acfp.connected_components();
+        let segments = assign_segments(&ccomp, &pairh);
+
+        Ok(DomainSequence{
+            seq: segments.iter().flatten().flat_map(|d| d.full_sequence()).collect(),
+        })
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Segment {
-    left_support: Vec<String>,  // ["s1", "s2"], or ["s2*", "s1*"]
-    logic: String,             // "L1", "L2*", etc.
-    right_support: Vec<String>, // ["s1", "s2"], or ["s2*", "s1*"]
-    timer: String,
+    left_support: DomainRefVec,  // ["s1", "s2"], or ["s2*", "s1*"]
+    logic: DomainRef,               // "L1", "L2*", etc.
+    right_support: DomainRefVec, // ["s1", "s2"], or ["s2*", "s1*"]
+    timer: DomainRef,
 }
 
 impl Segment {
-    pub fn full_sequence(&self) -> Vec<String> {
+    pub fn full_sequence(&self) -> DomainRefVec {
         self.left_support
             .iter()
             .cloned()
@@ -22,13 +44,14 @@ impl Segment {
             .collect()
     }
 
-    pub fn left_support(&self) -> &Vec<String> {
+    pub fn left_support(&self) -> &DomainRefVec {
         &self.left_support
     }
 }
 
 #[derive(Default)]
 struct DomainBookkeeper {
+    registry: DomainRegistry, 
     next_logic_id: usize,
     next_support_id: usize,
 }
@@ -48,24 +71,28 @@ impl DomainBookkeeper {
             self.next_support_id += 1;
             let name = format!("s{}", self.next_support_id);
             if k % 2 == 0 {
-                left_support.insert(0, name);
+                left_support.insert(0, self.registry.intern(&name, 3));
             } else {
-                right_support.push(name);
+                right_support.push(self.registry.intern(&name, 3));
             }
         }
 
         (
             Segment {
                 left_support: left_support.clone(),
-                logic: format!("L{}", self.next_logic_id),
+                logic: self.registry.intern(&format!("L{}", self.next_logic_id), 8),
                 right_support: right_support.clone(),
-                timer: format!("T{}", i),
+                timer: self.registry.intern(&format!("T{}", i), i),
             },
             Segment {
-                left_support: right_support.into_iter().rev().map(|s| format!("{}*", s)).collect(),
-                logic: format!("L{}*", self.next_logic_id),
-                right_support: left_support.into_iter().rev().map(|s| format!("{}*", s)).collect(),
-                timer: format!("T{}", j),
+                left_support: right_support.into_iter().rev()
+                    .map(|d| self.registry.get_complement(&d))
+                    .collect(),
+                logic: self.registry.intern(&format!("L{}*", self.next_logic_id), 8),
+                right_support: left_support.into_iter().rev()
+                    .map(|d| self.registry.get_complement(&d))
+                    .collect(),
+                timer: self.registry.intern(&format!("T{}", j), j),
             },
         )
     }
@@ -77,22 +104,24 @@ fn extend_supports(
     bk: &mut DomainBookkeeper,
     target_w: usize,
 ) {
-    let comp = if seg.logic.ends_with('*') { "*".to_string() } else { "".to_string() };
+    let comp = if seg.logic.name.ends_with('*') { "*".to_string() } else { "".to_string() };
+
     let needed = 2 * target_w;
     while seg.left_support.len() + seg.right_support.len() < needed {
         bk.next_support_id += 1;
         let new = format!("s{}{}", bk.next_support_id, comp);
-        if seg.logic.ends_with('*') {
+        
+        if seg.logic.name.ends_with('*') {
             if seg.left_support.len() <= seg.right_support.len() {
-                seg.left_support.insert(0, new);
+                seg.left_support.insert(0, bk.registry.intern(&new, 3));
             } else {
-                seg.right_support.push(new);
+                seg.right_support.push(bk.registry.intern(&new, 3));
             }
         } else {
             if seg.left_support.len() > seg.right_support.len() {
-                seg.right_support.push(new);
+                seg.right_support.push(bk.registry.intern(&new, 3));
             } else {
-                seg.left_support.insert(0, new);
+                seg.left_support.insert(0, bk.registry.intern(&new, 3));
             }
         }
     }
@@ -146,13 +175,15 @@ pub fn assign_segments(
             (Some(si), None) => {
                 let mut seg_i = si.clone();
                 extend_supports(&mut seg_i, &mut bookkeeper, w);
-
-                let comp = if seg_i.logic.ends_with('*') { "".to_string() } else { "*".to_string() };
                 let seg_j = Segment {
-                    left_support: seg_i.right_support.iter().take(w).rev().map(|s| format!("{}{}", s.trim_end_matches('*'), comp)).collect(),
-                    logic: format!("{}{}", seg_i.logic.trim_end_matches('*'), comp),
-                    right_support: seg_i.left_support.iter().rev().take(w).map(|s| format!("{}{}", s.trim_end_matches('*'), comp)).collect(),
-                    timer: format!("T{}", j),
+                    left_support: seg_i.right_support.iter().take(w).rev()
+                        .map(|d| bookkeeper.registry.get_complement(&d))
+                        .collect(),
+                    logic: bookkeeper.registry.get_complement(&seg_i.logic),
+                    right_support: seg_i.left_support.iter().rev().take(w)
+                        .map(|d| bookkeeper.registry.get_complement(&d))
+                        .collect(),
+                    timer: bookkeeper.registry.intern(&format!("T{}", j), j),
                 };
                 seq[i] = Some(seg_i);
                 seq[j] = Some(seg_j);
@@ -160,13 +191,15 @@ pub fn assign_segments(
             (None, Some(sj)) => {
                 let mut seg_j = sj.clone();
                 extend_supports(&mut seg_j, &mut bookkeeper, w);
-
-                let comp = if seg_j.logic.ends_with('*') { "".to_string() } else { "*".to_string() };
                 let seg_i = Segment {
-                    left_support: seg_j.right_support.iter().take(w).rev().map(|s| format!("{}{}", s.trim_end_matches('*'), comp)).collect(),
-                    logic: format!("{}{}", seg_j.logic.trim_end_matches('*'), comp),
-                    right_support: seg_j.left_support.iter().rev().take(w).map(|s| format!("{}{}", s.trim_end_matches('*'), comp)).collect(),
-                    timer: format!("T{}", i),
+                    left_support: seg_j.right_support.iter().take(w).rev()
+                        .map(|d| bookkeeper.registry.get_complement(&d))
+                        .collect(),
+                    logic: bookkeeper.registry.get_complement(&seg_j.logic),
+                    right_support: seg_j.left_support.iter().rev().take(w)
+                        .map(|d| bookkeeper.registry.get_complement(&d))
+                        .collect(),
+                    timer: bookkeeper.registry.intern(&format!("T{}", i), i),
                 };
                 seq[i] = Some(seg_i);
                 seq[j] = Some(seg_j);
@@ -174,20 +207,21 @@ pub fn assign_segments(
             (Some(si), Some(sj)) => {
                 let mut seg_i = si.clone();
                 let mut seg_j = sj.clone();
-                assert_eq!(seg_i.logic.trim_end_matches('*'), seg_j.logic.trim_end_matches('*'));
-                assert!(seg_i.logic.ends_with('*') || seg_j.logic.ends_with('*'));
-                assert!(!(seg_i.logic.ends_with('*') && seg_j.logic.ends_with('*')));
+                assert!(bookkeeper.registry.are_complements(&seg_i.logic, &seg_j.logic));
                 if seg_i.left_support.len() < seg_j.left_support.len() {
                     assert!(seg_i.right_support.len() < seg_j.right_support.len());
                     // TODO: assert that existing support matches before we overwrite it.
                     extend_supports(&mut seg_j, &mut bookkeeper, w);
                     if seg_i.left_support.len() + seg_i.right_support.len() < w {
-                        let comp = if seg_j.logic.ends_with('*') { "".to_string() } else { "*".to_string() };
                         seg_i = Segment {
-                            left_support: seg_j.right_support.iter().take(w).rev().map(|s| format!("{}{}", s.trim_end_matches('*'), comp)).collect(),
-                            logic: format!("{}{}", seg_j.logic.trim_end_matches('*'), comp),
-                            right_support: seg_j.left_support.iter().rev().take(w).map(|s| format!("{}{}", s.trim_end_matches('*'), comp)).collect(),
-                            timer: format!("T{}", i),
+                            left_support: seg_j.right_support.iter().take(w).rev()
+                                .map(|d| bookkeeper.registry.get_complement(&d))
+                                .collect(),
+                            logic: bookkeeper.registry.get_complement(&seg_j.logic),
+                            right_support: seg_j.left_support.iter().rev().take(w)
+                                .map(|d| bookkeeper.registry.get_complement(&d))
+                                .collect(),
+                            timer: bookkeeper.registry.intern(&format!("T{}", i), i),
                         };
                     }
                 } else if seg_j.left_support.len() < seg_i.left_support.len() {
@@ -195,12 +229,15 @@ pub fn assign_segments(
                     // TODO: assert that existing support matches before we overwrite it.
                     extend_supports(&mut seg_i, &mut bookkeeper, w);
                     if seg_j.left_support.len() + seg_j.right_support.len() < w {
-                        let comp = if seg_i.logic.ends_with('*') { "".to_string() } else { "*".to_string() };
                         seg_j = Segment {
-                            left_support: seg_i.right_support.iter().take(w).rev().map(|s| format!("{}{}", s.trim_end_matches('*'), comp)).collect(),
-                            logic: format!("{}{}", seg_i.logic.trim_end_matches('*'), comp),
-                            right_support: seg_i.left_support.iter().rev().take(w).map(|s| format!("{}{}", s.trim_end_matches('*'), comp)).collect(),
-                            timer: format!("T{}", j),
+                            left_support: seg_i.right_support.iter().take(w).rev()
+                                .map(|d| bookkeeper.registry.get_complement(&d))
+                                .collect(),
+                            logic: bookkeeper.registry.get_complement(&seg_i.logic),
+                            right_support: seg_i.left_support.iter().rev().take(w)
+                                .map(|d| bookkeeper.registry.get_complement(&d))
+                                .collect(),
+                            timer: bookkeeper.registry.intern(&format!("T{}", j), j),
                         };
                     }
                 }
@@ -236,12 +273,19 @@ mod tests {
 
         // Call the function
         let segments = assign_segments(&components, &pair_hierarchy);
-        let sequence: Vec<String> = segments.iter().flatten().flat_map(|d| d.full_sequence()).collect();
-        println!("{}", sequence.join(" "));
+        let sequence: DomainRefVec = segments.iter().flatten().flat_map(|d| d.full_sequence()).collect();
+        println!("{:?}", sequence
+                .iter()
+                .map(|d| d.name.clone()).collect::<Vec<_>>()
+                .join(" ")
+            );
 
         // Print results for debugging
         for seg in segments.iter().flatten() {
-            println!("{:?}", seg.full_sequence());
+            println!("{:?}", seg.full_sequence()
+                .iter()
+                .map(|d| d.name.clone()).collect::<Vec<_>>()
+                .join(" "));
         }
 
         // Check symmetry and logic domain names
@@ -251,10 +295,10 @@ mod tests {
         let s4 = segments[4].as_ref().unwrap();
 
         // Ensure logic domains are complementary
-        assert_eq!(s1.logic, "L1");
-        assert_eq!(s2.logic, "L1*");
-        assert_eq!(s3.logic, "L1");
-        assert_eq!(s4.logic, "L1*");
+        assert_eq!(s1.logic.name, "L1");
+        assert_eq!(s2.logic.name, "L1*");
+        assert_eq!(s3.logic.name, "L1");
+        assert_eq!(s4.logic.name, "L1*");
 
         // Ensure left + right support lengths = 2w
         assert_eq!(s1.left_support.len() + s1.right_support.len(), 2);
@@ -286,7 +330,7 @@ mod tests {
 
         let segments = assign_segments(&ccomp, &pairh);
 
-        let mut transcript: Vec<String> = vec![];
+        let mut transcript: DomainRefVec = vec![];
         let mut tr_lengths: Vec<usize> = vec![];
         let mut ld_indices: Vec<usize> = vec![];
         for seg in segments.iter().flatten() {
@@ -298,11 +342,13 @@ mod tests {
             println!("{:?} {} {}", transcript, transcript.len(), transcript[ldi]);
         }
 
-        let sequence: Vec<String> = segments.iter().flatten().flat_map(|d| d.full_sequence()).collect();
-        println!("{}", sequence.join(" "));
-        println!("{}", transcript.join(" "));
+        let sequence: DomainRefVec = segments.iter().flatten().flat_map(|d| d.full_sequence()).collect();
+        println!("{:?}", sequence
+                .iter()
+                .map(|d| d.name.clone()).collect::<Vec<_>>()
+                .join(" "));
 
-        let p = build_pair_scores(&transcript, None);
+        let p = build_pair_scores(&sequence);
         let dp = nussinov(&p);
         for l in tr_lengths {
             let all_structs = traceback_structures(0, l, &dp, &p);
