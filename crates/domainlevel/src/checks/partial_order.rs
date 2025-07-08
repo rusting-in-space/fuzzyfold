@@ -22,10 +22,6 @@ impl PartialOrder {
         }
     }
 
-    pub fn egdes(&self) -> &FxHashSet<Pair> {
-        &self.pairs
-    }
-
     pub fn extend_by_pairtable(&mut self, pair_table: &PairTable) -> bool {
         let length = pair_table.len();
 
@@ -75,9 +71,8 @@ impl PartialOrder {
                         // it actually should have. so: nope.
                         return false
                     }  
-                    Err(m) => {
+                    Err(_) => {
                         // If the pair does not apply, it is not a problem here!
-                        //println!("{}", m);
                     }
                 }
             }

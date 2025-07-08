@@ -1,6 +1,6 @@
 use ndarray::Array2;
-use rustc_hash::{FxHashMap, FxHashSet};
-use crate::{domain::is_complement, DomainRefVec};
+use rustc_hash::FxHashSet;
+use crate::domain::{DomainRefVec, DomainRegistry};
 
 pub fn nussinov(p: &Array2<usize>) -> Array2<usize> {
     let (n, m) = p.dim();
@@ -22,24 +22,20 @@ pub fn nussinov(p: &Array2<usize>) -> Array2<usize> {
     dp
 }
 
-/// Returns a pairwise score matrix for a list of domain strings.
-/// If a `lengths` dictionary is provided, it overrides the default score (1)
-/// with the entry-specific length for each domain.
-pub fn build_pair_scores(domains: &DomainRefVec) -> Array2<usize> {
+/// Returns a pairwise score matrix for a vector of Domains.
+pub fn build_pair_scores(domains: &DomainRefVec, 
+    registry: &DomainRegistry) -> Array2<usize> {
     let n = domains.len();
     let mut p = Array2::from_elem((n, n), 0);
 
     for ((i, j), value) in p.indexed_iter_mut() {
         assert_eq!(*value, 0); // sanity check
-                               //
         let di = &domains[i];
         let dj = &domains[j];
-
-        if is_complement(&di.name, &dj.name) {
+        if registry.are_complements(di, dj) {
             *value = di.length.min(dj.length);
         }
     }
-
     p
 }
 
@@ -179,7 +175,7 @@ mod tests {
 
         let input = "a a* b b* c";
         let domains = drv(input, &mut registry);
-        let p = build_pair_scores(&domains);
+        let p = build_pair_scores(&domains, &registry);
         assert_eq!(p[(0, 1)], 1);
         assert_eq!(p[(1, 0)], 1);
         assert_eq!(p[(2, 3)], 1);
@@ -193,13 +189,13 @@ mod tests {
         registry.intern("a", 1);
         registry.intern("b", 2);
  
-        let sequence = drv("a a* b b*", &mut registry);
-        let p = build_pair_scores(&sequence);
+        let domains = drv("a a* b b*", &mut registry);
+        let p = build_pair_scores(&domains, &registry);
         let dp = nussinov(&p);
         assert_eq!(dp[(0, 3)], 3); // a-a* and b-b*
 
         let mut pairs: Vec<(usize, usize)> = Vec::new();
-        traceback(0, sequence.len() - 1, &dp, &p, &mut pairs);
+        traceback(0, domains.len() - 1, &dp, &p, &mut pairs);
         assert_eq!(pairs, vec![(0, 1), (2, 3)]); // a-a* and b-b*
     }
 
@@ -209,7 +205,7 @@ mod tests {
         registry.intern("a", 1);
         registry.intern("x", 2);
         let sequence = drv("a x a*", &mut registry);
-        let mut p = build_pair_scores(&sequence);
+        let mut p = build_pair_scores(&sequence, &registry);
         p[(0, 2)] = 1; // ensure complement
         p[(2, 0)] = 1;
         let dp = nussinov(&p);

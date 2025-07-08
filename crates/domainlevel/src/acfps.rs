@@ -21,7 +21,9 @@ use crate::checks::{
 
 #[derive(Debug, Clone)]
 pub struct Acfp {
-    db_path: Vec<DotBracketVec>,
+    db_path: Vec<DotBracketVec>, // That *is* the path.
+    // The following fields are commonly computed / cached properties 
+    // that remain valid if the path gets extended.
     pt_path: Vec<PairTable>,
     all_pairs: FxHashSet<Pair>, // by convention: i < j
     partial_order: Option<PartialOrder>,

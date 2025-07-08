@@ -1,6 +1,5 @@
 
 use std::collections::VecDeque;
-use std::convert::TryFrom;
 use rustc_hash::FxHashMap;
 use nohash_hasher::{IntSet, IntMap};
 use crate::domain::DomainRefVec;
@@ -11,17 +10,19 @@ struct DomainSequence {
     seq: DomainRefVec,
 }
 
-impl TryFrom<&Acfp> for DomainSequence {
-    type Error = String;
-
-    fn try_from(acfp: &Acfp) -> Result<Self, Self::Error> {
-        let pairh = acfp.pair_hierarchy().unwrap();
+impl DomainSequence {
+    pub fn from_acfp(acfp: &Acfp, registry: &mut DomainRegistry) -> Result<Self, String> {
+        let pairh = acfp.pair_hierarchy().ok_or("Missing pair hierarchy")?;
         let ccomp = acfp.connected_components();
-        let segments = assign_segments(&ccomp, &pairh);
+        let segments = assign_segments(&ccomp, &pairh, registry);
 
-        Ok(DomainSequence{
-            seq: segments.iter().flatten().flat_map(|d| d.full_sequence()).collect(),
-        })
+        let seq = segments
+            .iter()
+            .flatten()
+            .flat_map(|seg| seg.full_sequence())
+            .collect();
+
+        Ok(DomainSequence { seq })
     }
 }
 
@@ -51,7 +52,6 @@ impl Segment {
 
 #[derive(Default)]
 struct DomainBookkeeper {
-    registry: DomainRegistry, 
     next_logic_id: usize,
     next_support_id: usize,
 }
@@ -61,7 +61,7 @@ impl DomainBookkeeper {
         Self::default()
     }
 
-    pub fn new_logic_pair(&mut self, i: usize, j: usize, weight: usize) -> (Segment, Segment) {
+    pub fn new_logic_pair(&mut self, i: usize, j: usize, weight: usize, registry: &mut DomainRegistry) -> (Segment, Segment) {
         self.next_logic_id += 1;
 
         let mut left_support = Vec::new();
@@ -71,28 +71,28 @@ impl DomainBookkeeper {
             self.next_support_id += 1;
             let name = format!("s{}", self.next_support_id);
             if k % 2 == 0 {
-                left_support.insert(0, self.registry.intern(&name, 3));
+                left_support.insert(0, registry.intern(&name, 3));
             } else {
-                right_support.push(self.registry.intern(&name, 3));
+                right_support.push(registry.intern(&name, 3));
             }
         }
 
         (
             Segment {
                 left_support: left_support.clone(),
-                logic: self.registry.intern(&format!("L{}", self.next_logic_id), 8),
+                logic: registry.intern(&format!("L{}", self.next_logic_id), 8),
                 right_support: right_support.clone(),
-                timer: self.registry.intern(&format!("T{}", i), i),
+                timer: registry.intern(&format!("T{}", i), i),
             },
             Segment {
                 left_support: right_support.into_iter().rev()
-                    .map(|d| self.registry.get_complement(&d))
+                    .map(|d| registry.get_complement(&d))
                     .collect(),
-                logic: self.registry.intern(&format!("L{}*", self.next_logic_id), 8),
+                logic: registry.intern(&format!("L{}*", self.next_logic_id), 8),
                 right_support: left_support.into_iter().rev()
-                    .map(|d| self.registry.get_complement(&d))
+                    .map(|d| registry.get_complement(&d))
                     .collect(),
-                timer: self.registry.intern(&format!("T{}", j), j),
+                timer: registry.intern(&format!("T{}", j), j),
             },
         )
     }
@@ -103,6 +103,7 @@ fn extend_supports(
     seg: &mut Segment,
     bk: &mut DomainBookkeeper,
     target_w: usize,
+    registry: &mut DomainRegistry,
 ) {
     let comp = if seg.logic.name.ends_with('*') { "*".to_string() } else { "".to_string() };
 
@@ -113,15 +114,15 @@ fn extend_supports(
         
         if seg.logic.name.ends_with('*') {
             if seg.left_support.len() <= seg.right_support.len() {
-                seg.left_support.insert(0, bk.registry.intern(&new, 3));
+                seg.left_support.insert(0, registry.intern(&new, 3));
             } else {
-                seg.right_support.push(bk.registry.intern(&new, 3));
+                seg.right_support.push(registry.intern(&new, 3));
             }
         } else {
             if seg.left_support.len() > seg.right_support.len() {
-                seg.right_support.push(bk.registry.intern(&new, 3));
+                seg.right_support.push(registry.intern(&new, 3));
             } else {
-                seg.left_support.insert(0, bk.registry.intern(&new, 3));
+                seg.left_support.insert(0, registry.intern(&new, 3));
             }
         }
     }
@@ -131,6 +132,7 @@ fn extend_supports(
 pub fn assign_segments(
     components: &[Vec<usize>],
     pair_hierarchy: &FxHashMap<(usize, usize), usize>,
+    registry: &mut DomainRegistry, 
 ) -> Vec<Option<Segment>> {
     let max_index = components.iter().flatten().copied().max().unwrap_or(0);
     let mut seq: Vec<Option<Segment>> = vec![None; max_index + 1];
@@ -163,7 +165,7 @@ pub fn assign_segments(
         match (si, sj) {
             (None, None) => {
                 if !seen_components.contains(&comp_id) {
-                    let (seg_i, seg_j) = bookkeeper.new_logic_pair(i, j, w);
+                    let (seg_i, seg_j) = bookkeeper.new_logic_pair(i, j, w, registry);
                     seq[i] = Some(seg_i);
                     seq[j] = Some(seg_j);
                     seen_components.insert(comp_id);
@@ -174,32 +176,32 @@ pub fn assign_segments(
             }
             (Some(si), None) => {
                 let mut seg_i = si.clone();
-                extend_supports(&mut seg_i, &mut bookkeeper, w);
+                extend_supports(&mut seg_i, &mut bookkeeper, w, registry);
                 let seg_j = Segment {
                     left_support: seg_i.right_support.iter().take(w).rev()
-                        .map(|d| bookkeeper.registry.get_complement(&d))
+                        .map(|d| registry.get_complement(&d))
                         .collect(),
-                    logic: bookkeeper.registry.get_complement(&seg_i.logic),
+                    logic: registry.get_complement(&seg_i.logic),
                     right_support: seg_i.left_support.iter().rev().take(w)
-                        .map(|d| bookkeeper.registry.get_complement(&d))
+                        .map(|d| registry.get_complement(&d))
                         .collect(),
-                    timer: bookkeeper.registry.intern(&format!("T{}", j), j),
+                    timer: registry.intern(&format!("T{}", j), j),
                 };
                 seq[i] = Some(seg_i);
                 seq[j] = Some(seg_j);
             }
             (None, Some(sj)) => {
                 let mut seg_j = sj.clone();
-                extend_supports(&mut seg_j, &mut bookkeeper, w);
+                extend_supports(&mut seg_j, &mut bookkeeper, w, registry);
                 let seg_i = Segment {
                     left_support: seg_j.right_support.iter().take(w).rev()
-                        .map(|d| bookkeeper.registry.get_complement(&d))
+                        .map(|d| registry.get_complement(&d))
                         .collect(),
-                    logic: bookkeeper.registry.get_complement(&seg_j.logic),
+                    logic: registry.get_complement(&seg_j.logic),
                     right_support: seg_j.left_support.iter().rev().take(w)
-                        .map(|d| bookkeeper.registry.get_complement(&d))
+                        .map(|d| registry.get_complement(&d))
                         .collect(),
-                    timer: bookkeeper.registry.intern(&format!("T{}", i), i),
+                    timer: registry.intern(&format!("T{}", i), i),
                 };
                 seq[i] = Some(seg_i);
                 seq[j] = Some(seg_j);
@@ -207,37 +209,37 @@ pub fn assign_segments(
             (Some(si), Some(sj)) => {
                 let mut seg_i = si.clone();
                 let mut seg_j = sj.clone();
-                assert!(bookkeeper.registry.are_complements(&seg_i.logic, &seg_j.logic));
+                assert!(registry.are_complements(&seg_i.logic, &seg_j.logic));
                 if seg_i.left_support.len() < seg_j.left_support.len() {
                     assert!(seg_i.right_support.len() < seg_j.right_support.len());
                     // TODO: assert that existing support matches before we overwrite it.
-                    extend_supports(&mut seg_j, &mut bookkeeper, w);
+                    extend_supports(&mut seg_j, &mut bookkeeper, w, registry);
                     if seg_i.left_support.len() + seg_i.right_support.len() < w {
                         seg_i = Segment {
                             left_support: seg_j.right_support.iter().take(w).rev()
-                                .map(|d| bookkeeper.registry.get_complement(&d))
+                                .map(|d| registry.get_complement(&d))
                                 .collect(),
-                            logic: bookkeeper.registry.get_complement(&seg_j.logic),
+                            logic: registry.get_complement(&seg_j.logic),
                             right_support: seg_j.left_support.iter().rev().take(w)
-                                .map(|d| bookkeeper.registry.get_complement(&d))
+                                .map(|d| registry.get_complement(&d))
                                 .collect(),
-                            timer: bookkeeper.registry.intern(&format!("T{}", i), i),
+                            timer: registry.intern(&format!("T{}", i), i),
                         };
                     }
                 } else if seg_j.left_support.len() < seg_i.left_support.len() {
                     assert!(seg_j.right_support.len() < seg_i.right_support.len());
                     // TODO: assert that existing support matches before we overwrite it.
-                    extend_supports(&mut seg_i, &mut bookkeeper, w);
+                    extend_supports(&mut seg_i, &mut bookkeeper, w, registry);
                     if seg_j.left_support.len() + seg_j.right_support.len() < w {
                         seg_j = Segment {
                             left_support: seg_i.right_support.iter().take(w).rev()
-                                .map(|d| bookkeeper.registry.get_complement(&d))
+                                .map(|d| registry.get_complement(&d))
                                 .collect(),
-                            logic: bookkeeper.registry.get_complement(&seg_i.logic),
+                            logic: registry.get_complement(&seg_i.logic),
                             right_support: seg_i.left_support.iter().rev().take(w)
-                                .map(|d| bookkeeper.registry.get_complement(&d))
+                                .map(|d| registry.get_complement(&d))
                                 .collect(),
-                            timer: bookkeeper.registry.intern(&format!("T{}", j), j),
+                            timer: registry.intern(&format!("T{}", j), j),
                         };
                     }
                 }
@@ -272,7 +274,8 @@ mod tests {
         let components = vec![vec![1, 2, 3, 4]];
 
         // Call the function
-        let segments = assign_segments(&components, &pair_hierarchy);
+        let mut registry = DomainRegistry::new();
+        let segments = assign_segments(&components, &pair_hierarchy, &mut registry);
         let sequence: DomainRefVec = segments.iter().flatten().flat_map(|d| d.full_sequence()).collect();
         println!("{:?}", sequence
                 .iter()
@@ -328,7 +331,8 @@ mod tests {
         println!("{:?}", pairh);
         println!("{:?}", ccomp);
 
-        let segments = assign_segments(&ccomp, &pairh);
+        let mut registry = DomainRegistry::new();
+        let segments = assign_segments(&ccomp, &pairh, &mut registry);
 
         let mut transcript: DomainRefVec = vec![];
         let mut tr_lengths: Vec<usize> = vec![];
@@ -348,7 +352,7 @@ mod tests {
                 .map(|d| d.name.clone()).collect::<Vec<_>>()
                 .join(" "));
 
-        let p = build_pair_scores(&sequence);
+        let p = build_pair_scores(&sequence, &registry);
         let dp = nussinov(&p);
         for l in tr_lengths {
             let all_structs = traceback_structures(0, l, &dp, &p);

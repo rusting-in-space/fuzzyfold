@@ -1,14 +1,14 @@
 use crate::rules::RewriteRule;
 use crate::rules::{r11::R11, 
-                                r12::R12,
-                                r21::R21,
-                                r22::R22,
-                                r23::R23,
-                                r24::R24,
-                                r25::R25,
-                                r26::R26,
-                                r27::R27,
-                                r28::R28};
+                   r12::R12,
+                   r21::R21,
+                   r22::R22,
+                   r23::R23,
+                   r24::R24,
+                   r25::R25,
+                   r26::R26,
+                   r27::R27,
+                   r28::R28};
 use once_cell::sync::Lazy;
 
 static ALL_RULES: Lazy<Vec<&'static dyn RewriteRule>> = Lazy::new(|| {

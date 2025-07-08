@@ -3,7 +3,7 @@ use std::collections::{HashSet, VecDeque};
 use crate::complexregistry::ComplexRef;
 use crate::reactions::Reaction;
 use crate::rules::RewriteRule;
-use crate::rules::registry::*;
+use crate::rules::*;
 
 pub fn enumerate_complexes(
     start: impl IntoIterator<Item = ComplexRef>,
