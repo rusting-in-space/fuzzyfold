@@ -1,6 +1,6 @@
 use ndarray::Array2;
 use rustc_hash::{FxHashMap, FxHashSet};
-use crate::utils::is_complement;
+use crate::domain::is_complement;
 
 pub fn nussinov(p: &Array2<usize>) -> Array2<usize> {
     let (n, m) = p.dim();

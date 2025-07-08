@@ -1,7 +1,7 @@
 
 use crate::complexregistry::{ComplexRef, ComplexRegistry, ComplexRegistryError};
 use crate::rules::RewriteRule;
-use crate::utils::is_complement;
+use crate::domain::is_complement;
 use crate::complex::get_kernel;
 use structure::DotBracket;
 

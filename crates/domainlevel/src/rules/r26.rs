@@ -2,7 +2,7 @@
 use crate::complexregistry::{ComplexRef, ComplexRegistry, ComplexRegistryError};
 use crate::rules::RewriteRule;
 use crate::complex::get_kernel;
-use crate::utils::is_complement;
+use crate::domain::is_complement;
 use structure::DotBracket;
 
 pub struct R26;
