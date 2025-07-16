@@ -10,6 +10,7 @@ pub enum DotBracket {
     Unpaired, // '.'
     Open,     // '('
     Close,    // ')'
+    Break,    // '+' or '&'
 }
 
 impl From<char> for DotBracket {
@@ -18,6 +19,7 @@ impl From<char> for DotBracket {
             '.' => DotBracket::Unpaired,
             '(' => DotBracket::Open,
             ')' => DotBracket::Close,
+            '+' | '&' => DotBracket::Break,
             _ => panic!("Invalid dot-bracket character: {}", c),
         }
     }
@@ -29,6 +31,7 @@ impl From<DotBracket> for char {
             DotBracket::Open => '(',
             DotBracket::Close => ')',
             DotBracket::Unpaired => '.',
+            DotBracket::Break => '+',
         }
     }
 }
@@ -54,34 +57,54 @@ impl TryFrom<&PairTable> for DotBracketVec {
     type Error = StructureError;
 
     fn try_from(pt: &PairTable) -> Result<Self, Self::Error> {
-        let mut result = Vec::with_capacity(pt.len());
+        match pt {
+            PairTable::Single(pt) => {
+                let mut result: Vec<DotBracket> = Vec::new();
 
-        for (i, &j_opt) in pt.iter().enumerate() {
-            match j_opt {
-                None => result.push(DotBracket::Unpaired),
-                Some(j) => {
-                    if j > i {
-                        match pt.get(j) {
-                            Some(Some(k)) if *k == i => {
+                for (i, &j_opt) in pt.iter().enumerate() {
+                    match j_opt {
+                        None => result.push(DotBracket::Unpaired),
+                        Some(j) => {
+                            if j > i {
                                 result.push(DotBracket::Open);
-                            }
-                            _ => return Err(StructureError::UnmatchedOpen(i)),
-                        }
-                    } else if j < i {
-                        match pt.get(j) {
-                            Some(Some(k)) if *k == i => {
+                            } else if j < i {
                                 result.push(DotBracket::Close);
+                            } else {
+                                return Err(StructureError::InvalidPairTable(i));
                             }
-                            _ => return Err(StructureError::UnmatchedClose(i)),
                         }
-                    } else { // j == i
-                        return Err(StructureError::InvalidToken("self-pairing".into(), i));
                     }
                 }
+                Ok(DotBracketVec(result))
+            }
+            
+            PairTable::Multi(pt) => {
+                let mut result: Vec<DotBracket> = Vec::new();
+
+                for (si, strand) in pt.iter().enumerate() {
+                    for (di, &pair) in strand.iter().enumerate() {
+                        match pair {
+                            None => result.push(DotBracket::Unpaired),
+                            Some((sj, dj)) => {
+                                if (sj, dj) > (si, di) {
+                                    result.push(DotBracket::Open);
+                                } else if (sj, dj) < (si, di) {
+                                    result.push(DotBracket::Close);
+                                } else {
+                                    return Err(StructureError::InvalidPairTable(si));
+                                }
+                            }
+                        }
+                    }
+                    // Only insert break if not the last strand
+                    //if si < pt.len() - 1 {
+                        result.push(DotBracket::Break);
+                    //}
+                }
+
+                Ok(DotBracketVec(result))
             }
         }
-
-        Ok(DotBracketVec(result))
     }
 }
 
@@ -134,6 +157,20 @@ mod tests {
         let pt = PairTable::try_from("((..))").unwrap();
         let dbv = DotBracketVec::try_from(&pt).unwrap();
         assert_eq!(format!("{}", dbv), "((..))");
+    }
+
+    #[test]
+    fn test_dot_bracket_vec_from_multi_pair_table_hack() {
+        let pt = PairTable::try_from("((..))+").unwrap();
+        let dbv = DotBracketVec::try_from(&pt).unwrap();
+        assert_eq!(format!("{}", dbv), "((..))+");
+    }
+
+    #[test]
+    fn test_dot_bracket_vec_from_multi_pair_table() {
+        let pt = PairTable::try_from("((..)+)").unwrap();
+        let dbv = DotBracketVec::try_from(&pt).unwrap();
+        assert_eq!(format!("{}", dbv), "((..)+)+");
     }
 
 }

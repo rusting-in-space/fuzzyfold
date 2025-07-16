@@ -1,3 +1,23 @@
+/// domain.rs (the Domain and DomainRegistry)
+///
+/// The Domain (name, length) is a typical abstract representation for the specification of nucleic
+/// acid complementarity. Because domains may occur in multiple sequences, and in many (enumerated)
+/// complexes, the DomainRegistry serves as a central overview on all domains in system. It holds a
+/// strong reference on each Domain, such that sequences, complexes, etc. can share the same Heap
+/// allocation with runtime reference counting. It also holds the logic of which domains are
+/// complementary -- which may be extended on demand.
+///
+/// For now, we do not support thread safety of the DomainRegistry. Even in multithreaded setups, 
+/// it may well be faster to initialize separate DomainRegistries in different threads. Generally,
+/// the DomainRegistry will be comparatively cheap to initiate, but then does typically not change,
+/// it provides a bit faster access to complementarity checks and memory-efficient storage of
+/// sequences.
+///
+/// Note: An attempt to use weak references to complementary domains from within the Domain has
+/// turned out very complicated / impossible without RefCell. I think it is not worth it, probably
+/// a bad design choice anyway. Let the DomainRegistry handle it.
+///
+
 use std::fmt;
 use std::rc::Rc;
 use rustc_hash::FxHashMap;
@@ -16,6 +36,8 @@ impl fmt::Display for Domain {
 }
 
 pub type DomainRef = Rc<Domain>;
+
+/// Probably the most simple form of storing a domain-level sequence.
 pub type DomainRefVec = Vec<DomainRef>;
 
 #[derive(Default)]
@@ -68,14 +90,17 @@ impl DomainRegistry {
         d1
     }
 
+    /// Retrieve the DomainRef if only the name of the Domain is known.
     pub fn get(&self, name: &str) -> Option<DomainRef> {
         self.domains.get(name).cloned()
     }
 
+    /// Get the complementary DomainRef to a given DomainRef
     pub fn get_complement(&self, d: &DomainRef) -> DomainRef {
         self.complements.get(d).unwrap().clone()
     }
 
+    /// Check if two Domains are complementary.
     pub fn are_complements(&self, a: &DomainRef, b: &DomainRef) -> bool {
         match self.complements.get(a) {
             Some(c) => Rc::ptr_eq(c, b),
@@ -83,7 +108,6 @@ impl DomainRegistry {
         }
     }
 }
-
 
 
 /// Checks whether two sequence symbols are complementary (e.g., "a" <-> "a*")

@@ -3,8 +3,11 @@ use std::fmt;
 #[derive(Debug)]
 pub enum StructureError {
     UnmatchedOpen(usize),          // '(' at this position was never closed
+    UnmatchedMultiOpen((usize, usize)),          // '(' at this position was never closed
     UnmatchedClose(usize),         // ')' at this position has no matching '('
+    UnmatchedMultiClose((usize, usize)),          // '(' at this position was never closed
     InvalidToken(String, usize),   // invalid char and position
+    InvalidPairTable(usize),   // invalid char and position
 }
 
 impl fmt::Display for StructureError {
@@ -13,11 +16,20 @@ impl fmt::Display for StructureError {
             StructureError::UnmatchedOpen(i) => {
                 write!(f, "Unmatched '(' at position {}", i)
             }
+            StructureError::UnmatchedMultiOpen((si, di)) => {
+                write!(f, "Unmatched '(' at strand {}, domain {}", si, di)
+            }
             StructureError::UnmatchedClose(i) => {
                 write!(f, "Unmatched ')' at position {}", i)
             }
+            StructureError::UnmatchedMultiClose((si, di)) => {
+                write!(f, "Unmatched ')' at strand {}, domain {}", si, di)
+            }
             StructureError::InvalidToken(tok, i) => {
                 write!(f, "Invalid token '{}' at position {}", tok, i)
+            }
+            StructureError::InvalidPairTable(i) => {
+                write!(f, "Invalid entry at pair table position {}", i)
             }
         }
     }
