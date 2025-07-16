@@ -2,8 +2,9 @@ use std::fmt;
 use std::ops::Deref;
 use std::convert::TryFrom;
 
-use crate::pair_table::PairTable;
-use crate::error::StructureError;
+use crate::PairTable;
+use crate::MultiPairTable;
+use crate::StructureError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DotBracket {
@@ -57,54 +58,55 @@ impl TryFrom<&PairTable> for DotBracketVec {
     type Error = StructureError;
 
     fn try_from(pt: &PairTable) -> Result<Self, Self::Error> {
-        match pt {
-            PairTable::Single(pt) => {
-                let mut result: Vec<DotBracket> = Vec::new();
+        let mut result: Vec<DotBracket> = Vec::new();
 
-                for (i, &j_opt) in pt.iter().enumerate() {
-                    match j_opt {
-                        None => result.push(DotBracket::Unpaired),
-                        Some(j) => {
-                            if j > i {
-                                result.push(DotBracket::Open);
-                            } else if j < i {
-                                result.push(DotBracket::Close);
-                            } else {
-                                return Err(StructureError::InvalidPairTable(i));
-                            }
-                        }
+        for (i, &j_opt) in pt.iter().enumerate() {
+            match j_opt {
+                None => result.push(DotBracket::Unpaired),
+                Some(j) => {
+                    if j > i {
+                        result.push(DotBracket::Open);
+                    } else if j < i {
+                        result.push(DotBracket::Close);
+                    } else {
+                        return Err(StructureError::InvalidPairTable(i));
                     }
                 }
-                Ok(DotBracketVec(result))
-            }
-            
-            PairTable::Multi(pt) => {
-                let mut result: Vec<DotBracket> = Vec::new();
-
-                for (si, strand) in pt.iter().enumerate() {
-                    for (di, &pair) in strand.iter().enumerate() {
-                        match pair {
-                            None => result.push(DotBracket::Unpaired),
-                            Some((sj, dj)) => {
-                                if (sj, dj) > (si, di) {
-                                    result.push(DotBracket::Open);
-                                } else if (sj, dj) < (si, di) {
-                                    result.push(DotBracket::Close);
-                                } else {
-                                    return Err(StructureError::InvalidPairTable(si));
-                                }
-                            }
-                        }
-                    }
-                    // Only insert break if not the last strand
-                    //if si < pt.len() - 1 {
-                        result.push(DotBracket::Break);
-                    //}
-                }
-
-                Ok(DotBracketVec(result))
             }
         }
+        Ok(DotBracketVec(result))
+    }
+}
+
+
+impl TryFrom<&MultiPairTable> for DotBracketVec {
+    type Error = StructureError;
+
+    fn try_from(pt: &MultiPairTable) -> Result<Self, Self::Error> {
+        let mut result: Vec<DotBracket> = Vec::new();
+
+        for (si, strand) in pt.0.iter().enumerate() {
+            for (di, &pair) in strand.iter().enumerate() {
+                match pair {
+                    None => result.push(DotBracket::Unpaired),
+                    Some((sj, dj)) => {
+                        if (sj, dj) > (si, di) {
+                            result.push(DotBracket::Open);
+                        } else if (sj, dj) < (si, di) {
+                            result.push(DotBracket::Close);
+                        } else {
+                            return Err(StructureError::InvalidPairTable(si));
+                        }
+                    }
+                }
+            }
+            // Only insert break if not the last strand
+            //if si < pt.len() - 1 {
+            result.push(DotBracket::Break);
+            //}
+        }
+
+        Ok(DotBracketVec(result))
     }
 }
 
@@ -161,14 +163,14 @@ mod tests {
 
     #[test]
     fn test_dot_bracket_vec_from_multi_pair_table_hack() {
-        let pt = PairTable::try_from("((..))+").unwrap();
+        let pt = MultiPairTable::try_from("((..))+").unwrap();
         let dbv = DotBracketVec::try_from(&pt).unwrap();
         assert_eq!(format!("{}", dbv), "((..))+");
     }
 
     #[test]
     fn test_dot_bracket_vec_from_multi_pair_table() {
-        let pt = PairTable::try_from("((..)+)").unwrap();
+        let pt = MultiPairTable::try_from("((..)+)").unwrap();
         let dbv = DotBracketVec::try_from(&pt).unwrap();
         assert_eq!(format!("{}", dbv), "((..)+)+");
     }

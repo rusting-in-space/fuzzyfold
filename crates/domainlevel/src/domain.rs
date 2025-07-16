@@ -36,8 +36,6 @@ impl fmt::Display for Domain {
 }
 
 pub type DomainRef = Rc<Domain>;
-
-/// Probably the most simple form of storing a domain-level sequence.
 pub type DomainRefVec = Vec<DomainRef>;
 
 #[derive(Default)]

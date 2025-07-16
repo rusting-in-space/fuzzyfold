@@ -26,53 +26,44 @@ impl TryFrom<&PairTable> for LoopTable {
     type Error = StructureError;
 
     fn try_from(pt: &PairTable) -> Result<Self, Self::Error> {
-        match pt {
-            PairTable::Single(pt) => {
-                let n = pt.len();
-                let mut table = vec![LoopInfo::Unpaired { l: 0 }; n];
-                let mut loop_index = 0;
-                let mut stack: Vec<(usize, usize)> = Vec::new(); // (closing_idx, loop_id)
-                let mut mloop = 0;
+        let n = pt.len();
+        let mut table = vec![LoopInfo::Unpaired { l: 0 }; n];
+        let mut loop_index = 0;
+        let mut stack: Vec<(usize, usize)> = Vec::new(); // (closing_idx, loop_id)
+        let mut mloop = 0;
 
-                for i in 0..n {
-                    match pt[i] {
-                        None => {
-                            table[i] = LoopInfo::Unpaired { l: loop_index };
-                        }
-                        Some(j) if j > i => {
-                            let outer_loop = loop_index;
-                            mloop += 1;
-                            loop_index = mloop;
-                            table[i] = LoopInfo::Paired { o: outer_loop, i: loop_index };
-                            stack.push((j, loop_index));
-                        }
-                        Some(j) if j < i => {
-                            if let Some((_, inner_loop)) = stack.pop() {
-                                loop_index = stack.last().map(|&(_, l)| l).unwrap_or(0);
-                                table[i] = LoopInfo::Paired { o: loop_index, i: inner_loop };
-                            } else {
-                                return Err(StructureError::UnmatchedClose(i));
-                            }
-                        }
-                        Some(j) if j == i => {
-                            return Err(StructureError::InvalidToken("self-pairing".into(), i));
-                        }
-                        _ => unreachable!(),
+        for i in 0..n {
+            match pt[i] {
+                None => {
+                    table[i] = LoopInfo::Unpaired { l: loop_index };
+                }
+                Some(j) if j > i => {
+                    let outer_loop = loop_index;
+                    mloop += 1;
+                    loop_index = mloop;
+                    table[i] = LoopInfo::Paired { o: outer_loop, i: loop_index };
+                    stack.push((j, loop_index));
+                }
+                Some(j) if j < i => {
+                    if let Some((_, inner_loop)) = stack.pop() {
+                        loop_index = stack.last().map(|&(_, l)| l).unwrap_or(0);
+                        table[i] = LoopInfo::Paired { o: loop_index, i: inner_loop };
+                    } else {
+                        return Err(StructureError::UnmatchedClose(i));
                     }
                 }
-
-                if let Some((unclosed, _)) = stack.last() {
-                    return Err(StructureError::UnmatchedOpen(*unclosed));
+                Some(j) if j == i => {
+                    return Err(StructureError::InvalidToken("self-pairing".into(), i));
                 }
-
-                Ok(LoopTable(table))
+                _ => unreachable!(),
             }
-
-            PairTable::Multi(_) => Err(StructureError::InvalidToken(
-                "LoopTable from multi-strand PairTable is not yet implemented".to_string(),
-                0,
-            )),
         }
+
+        if let Some((unclosed, _)) = stack.last() {
+            return Err(StructureError::UnmatchedOpen(*unclosed));
+        }
+
+        Ok(LoopTable(table))
     }
 }
 
@@ -128,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_loop_table_self_pairing_fails() {
-        let pt = PairTable::Single(vec![Some(0)]);
+        let pt = PairTable(vec![Some(0)]);
         let err = LoopTable::try_from(&pt).unwrap_err();
         assert!(matches!(err, StructureError::InvalidToken( .. )));
     }
@@ -136,7 +127,7 @@ mod tests {
     #[test]
     fn test_loop_table_unmatched_open_detected_in_loop_table() {
         // manually constructed bad PairTable with unmatched open
-        let pt = PairTable::Single(vec![Some(5), Some(4), None, None, Some(1), None]);
+        let pt = PairTable(vec![Some(5), Some(4), None, None, Some(1), None]);
         let err = LoopTable::try_from(&pt).unwrap_err();
         assert!(matches!(err, StructureError::UnmatchedOpen(5)));
     }

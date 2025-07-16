@@ -151,6 +151,7 @@ pub fn get_kernel(sequence: &[String], structure: &[DotBracket]) -> String {
             DotBracket::Unpaired => seq.clone(), // just the sequence
             DotBracket::Open => format!("{}(", seq), // explicit opener
             DotBracket::Close => ")".to_string(), // implicit sequence, inferred
+            DotBracket::Break => unreachable!("not implemented!"), // implicit sequence, inferred
         };
         tokens.push(token);
     }

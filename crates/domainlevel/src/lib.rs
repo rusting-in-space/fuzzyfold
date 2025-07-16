@@ -1,10 +1,13 @@
+mod domain;
+mod strand;
 mod complex;
 mod complexregistry;
 mod reactions;
-mod enumerate;
-mod acfps;
+
 mod segments;
-mod domain;
+
+mod acfps;
+mod enumerate;
 
 mod rules;
 mod checks;

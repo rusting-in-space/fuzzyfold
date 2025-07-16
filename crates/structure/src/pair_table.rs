@@ -1,199 +1,95 @@
-
+use std::ops::{Deref, DerefMut};
 use std::convert::TryFrom;
 use crate::error::StructureError;
 use crate::dotbracket::{DotBracket, DotBracketVec};
 use crate::pair_list::{Pair, PairList};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PairTable {
-    Single(Vec<Option<usize>>),
-    Multi(Vec<Vec<Option<(usize, usize)>>>)
-}
+pub struct PairTable(pub Vec<Option<usize>>);
 
 impl PairTable {
+    /// Check if the substructure from `i..j` is well-formed:
+    /// - All pairings are internal to the interval
     pub fn is_well_formed(&self, i: usize, j: usize) -> bool {
-        match self {
-            PairTable::Single(pt) => {
-                assert!(j <= pt.len(), "Invalid interval: j must be <= length");
-                for k in i..j {
-                    if let Some(l) = pt[k] {
-                        if l < i || l >= j {
-                            return false;
-                        }
-                    }
+        assert!(j <= self.len(), "Invalid interval: j must be <= length");
+
+        for k in i..j {
+            if let Some(l) = self[k] {
+                if l < i || l >= j {
+                    return false; // points outside
                 }
-                true
-            }
-            PairTable::Multi(_) => {
-                panic!("is_well_formed only implemented for Single-stranded PairTable")
             }
         }
+        true
     }
+}
 
-    pub fn len(&self) -> usize {
-        match self {
-            PairTable::Single(pt) => pt.len(),
-            PairTable::Multi(pt) => pt.iter().map(|s| s.len()).sum(),
-        }
+impl Deref for PairTable {
+    type Target = [Option<usize>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
+}
 
-    pub fn unwrap_single(self) -> Vec<Option<usize>> {
-        match self {
-            PairTable::Single(pt) => pt,
-            PairTable::Multi(_) => panic!("called `unwrap_single()` on a Multi PairTable"),
-        }
+impl DerefMut for PairTable {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
-
-    pub fn unwrap_multi(self) -> Vec<Vec<Option<(usize, usize)>>> {
-        match self {
-            PairTable::Multi(pt) => pt,
-            PairTable::Single(_) => panic!("called `unwrap_multi()` on a Single PairTable"),
-        }
-    }
-
 }
 
 impl TryFrom<&str> for PairTable {
     type Error = StructureError;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        if s.chars().any(|c| c == '+' || c == '&') {
-            let mut strand_idx = 0;
-            let mut domain_idx = 0;
-            let mut stack: Vec<(usize, usize)> = Vec::new(); // (strand_idx, domain_idx)
-            let mut pair_table: Vec<Vec<Option<(usize, usize)>>> = vec![vec![]];
+        let mut stack = Vec::new();
+        let mut table = vec![None; s.len()];
 
-            for (i, ch) in s.chars().enumerate() {
-                match ch {
-                    '+' | '&' => {
-                        assert!(domain_idx + strand_idx > 0);
-                        if i < s.len()-1 {
-                            // Don't append an empty vec in the "hack version"
-                            pair_table.push(vec![]);
-                        }
-                        strand_idx += 1;
-                        domain_idx = 0;
-                    }
-                    '(' => {
-                        stack.push((strand_idx, domain_idx));
-                        pair_table[strand_idx].push(None); // placeholder
-                        domain_idx += 1;
-                    }
-                    ')' => {
-                        let (si, di) = stack.pop().ok_or(StructureError::UnmatchedMultiClose((strand_idx, domain_idx)))?;
-                        pair_table[si][di] = Some((strand_idx, domain_idx));
-                        pair_table[strand_idx].push(Some((si, di)));
-                        domain_idx += 1;
-                    }
-                    '.' => {
-                        pair_table[strand_idx].push(None);
-                        domain_idx += 1;
-                    }
-                    _ => {
-                        return Err(StructureError::InvalidToken(ch.to_string(), i)); 
-                    }
+        for (i, c) in s.chars().enumerate() {
+            match c {
+                '(' => stack.push(i),
+                ')' => {
+                    let j = stack.pop().ok_or(StructureError::UnmatchedClose(i))?;
+                    table[i] = Some(j);
+                    table[j] = Some(i);
                 }
+                '.' => (),
+                _ => return Err(StructureError::InvalidToken(c.to_string(), i)),
             }
-            if let Some((si, di)) = stack.pop() {
-                return Err(StructureError::UnmatchedMultiOpen((si, di)));
-            }
-            Ok(PairTable::Multi(pair_table))
-        } else {
-            let mut stack = Vec::new();
-            let mut table = vec![None; s.len()];
-
-            for (i, c) in s.chars().enumerate() {
-                match c {
-                    '(' => stack.push(i),
-                    ')' => {
-                        let j = stack.pop().ok_or(StructureError::UnmatchedClose(i))?;
-                        table[i] = Some(j);
-                        table[j] = Some(i);
-                    }
-                    '.' => (),
-                    _ => return Err(StructureError::InvalidToken(c.to_string(), i)),
-                }
-            }
-
-            if let Some(i) = stack.pop() {
-                return Err(StructureError::UnmatchedOpen(i));
-            }
-
-            Ok(PairTable::Single(table))
         }
+
+        if let Some(i) = stack.pop() {
+            return Err(StructureError::UnmatchedOpen(i));
+        }
+        Ok(PairTable(table))
     }
 }
-
 
 impl TryFrom<&DotBracketVec> for PairTable {
     type Error = StructureError;
 
     fn try_from(db: &DotBracketVec) -> Result<Self, Self::Error> {
-        // First, check if it's single- or multi-stranded
-        let is_multi = db.iter().any(|d| *d == DotBracket::Break);
+        let mut stack: Vec<usize> = Vec::new();
+        let mut table = vec![None; db.len()];
 
-        if !is_multi {
-            // Single-stranded case
-            let mut stack: Vec<usize> = Vec::new();
-            let mut table = vec![None; db.len()];
-
-            for (i, dot) in db.iter().enumerate() {
-                match dot {
-                    DotBracket::Open => stack.push(i),
-                    DotBracket::Close => {
-                        let j = stack.pop().ok_or(StructureError::UnmatchedClose(i))?;
-                        table[i] = Some(j);
-                        table[j] = Some(i);
-                    }
-                    DotBracket::Unpaired => {}
-                    DotBracket::Break => unreachable!("unexpected Break in single-stranded case"),
+        for (i, dot) in db.iter().enumerate() {
+            match dot {
+                DotBracket::Open => stack.push(i),
+                DotBracket::Close => {
+                    let j = stack.pop().ok_or(StructureError::UnmatchedClose(i))?;
+                    table[i] = Some(j);
+                    table[j] = Some(i);
                 }
+                DotBracket::Unpaired => {}
+                DotBracket::Break => unreachable!("unexpected Break in single-stranded case"),
             }
-
-            if let Some(i) = stack.pop() {
-                return Err(StructureError::UnmatchedOpen(i));
-            }
-
-            Ok(PairTable::Single(table))
-        } else {
-            // Multi-stranded case
-            let mut strand_idx = 0;
-            let mut domain_idx = 0;
-            let mut stack: Vec<(usize, usize)> = Vec::new(); // (strand_idx, domain_idx)
-            let mut pair_table: Vec<Vec<Option<(usize, usize)>>> = vec![vec![]];
-
-            for dot in db.iter() {
-                match dot {
-                    DotBracket::Break => {
-                        assert!(domain_idx + strand_idx > 0);
-                        pair_table.push(vec![]);
-                        strand_idx += 1;
-                        domain_idx = 0;
-                    }
-                    DotBracket::Open => {
-                        stack.push((strand_idx, domain_idx));
-                        pair_table[strand_idx].push(None); // placeholder
-                        domain_idx += 1;
-                    }
-                    DotBracket::Close => {
-                        let (si, di) = stack.pop().ok_or(StructureError::UnmatchedMultiClose((strand_idx, domain_idx)))?;
-                        pair_table[si][di] = Some((strand_idx, domain_idx));
-                        pair_table[strand_idx].push(Some((si, di)));
-                        domain_idx += 1;
-                    }
-                    DotBracket::Unpaired => {
-                        pair_table[strand_idx].push(None);
-                        domain_idx += 1;
-                    }
-                }
-            }
-
-            if let Some((si, di)) = stack.pop() {
-                return Err(StructureError::UnmatchedMultiOpen((si, di)));
-            }
-
-            Ok(PairTable::Multi(pair_table))
         }
+
+        if let Some(i) = stack.pop() {
+            return Err(StructureError::UnmatchedOpen(i));
+        }
+
+        Ok(PairTable(table))
     }
 }
 
@@ -205,6 +101,7 @@ impl TryFrom<&PairList> for PairTable {
         let mut table = vec![None; pl.length];
 
         for &Pair(i1, j1) in &pl.pairs {
+            // Convert 1-based to 0-based
             if i1 == j1 {
                 return Err(StructureError::InvalidToken("self-pairing".to_string(), i1));
             }
@@ -238,7 +135,7 @@ impl TryFrom<&PairList> for PairTable {
             table[j] = Some(i);
         }
 
-        Ok(PairTable::Single(table))
+        Ok(PairTable(table))
     }
 }
 
@@ -251,51 +148,12 @@ mod tests {
     fn test_valid_pair_table() {
         let pt = PairTable::try_from("((..))").unwrap();
         assert_eq!(pt.len(), 6);
-        match pt {
-            PairTable::Single(pt) => {
-                assert_eq!(pt[0], Some(5));
-                assert_eq!(pt[1], Some(4));
-                assert_eq!(pt[2], None);
-                assert_eq!(pt[3], None);
-                assert_eq!(pt[4], Some(1));
-                assert_eq!(pt[5], Some(0));
-            }
-            _ => { panic!("Expected single pairtable") }
-        }
-    }
-
-    #[test]
-    fn test_multi_pair_table() {
-        let pt = PairTable::try_from("((.+.))").unwrap();
-        assert_eq!(pt.len(), 6);
-        match pt {
-            PairTable::Multi(pt) => {
-                assert_eq!(pt[0][0], Some((1, 2)));
-                assert_eq!(pt[0][1], Some((1, 1)));
-                assert_eq!(pt[0][2], None);
-                assert_eq!(pt[1][0], None);
-                assert_eq!(pt[1][1], Some((0, 1)));
-                assert_eq!(pt[1][2], Some((0, 0)));
-            }
-            _ => { panic!("Expected multi pairtable") }
-        }
-    }
-
-    #[test]
-    fn test_multi_pair_table_hack() {
-        let pt = PairTable::try_from("((..))+").unwrap();
-        assert_eq!(pt.len(), 6);
-        match pt {
-            PairTable::Multi(pt) => {
-                assert_eq!(pt[0][0], Some((0, 5)));
-                assert_eq!(pt[0][1], Some((0, 4)));
-                assert_eq!(pt[0][2], None);
-                assert_eq!(pt[0][3], None);
-                assert_eq!(pt[0][4], Some((0, 1)));
-                assert_eq!(pt[0][5], Some((0, 0)));
-            }
-            _ => { panic!("Expected multi pairtable") }
-        }
+        assert_eq!(pt[0], Some(5));
+        assert_eq!(pt[1], Some(4));
+        assert_eq!(pt[2], None);
+        assert_eq!(pt[3], None);
+        assert_eq!(pt[4], Some(1));
+        assert_eq!(pt[5], Some(0));
     }
 
     #[test]
@@ -355,8 +213,8 @@ mod tests {
             length: 6,
             pairs: vec![Pair(1, 6), Pair(2, 5)],
         };
-        let pt = PairTable::try_from(&pl).unwrap().unwrap_single();
-        assert_eq!(pt, vec![Some(5), Some(4), None, None, Some(1), Some(0)]);
+        let pt = PairTable::try_from(&pl).unwrap();
+        assert_eq!(pt.0, vec![Some(5), Some(4), None, None, Some(1), Some(0)]);
     }
 
     #[test]
@@ -389,5 +247,6 @@ mod tests {
         assert!(matches!(err, StructureError::InvalidToken(_, _)));
     }
 }
+
 
 
