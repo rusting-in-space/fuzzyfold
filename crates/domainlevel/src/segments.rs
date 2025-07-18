@@ -16,7 +16,7 @@ use crate::acfps::Acfp;
 use crate::checks::dlfolding::{build_pair_scores, nussinov, traceback_structures};
 
 #[derive(Debug)]
-struct SegmentSequence {
+pub struct SegmentSequence {
     segments: Vec<Segment>,
 }
 
@@ -33,93 +33,84 @@ impl SegmentSequence {
 
         Ok(SegmentSequence { segments })
     }
-    
-    pub fn get_detailed_segment_complexes(&self, registry: &DomainRegistry) -> () {
+
+    pub fn get_domain_transcription_complexes(&self, registry: &DomainRegistry) -> Vec<DotBracketVec> {
         let sequence = &self.get_domain_sequence();
         let p = build_pair_scores(sequence, &registry);
         let dp = nussinov(&p);
         
+        let mut result: Vec<DotBracketVec> = vec![];
         for l in 0..sequence.len() {
             let all_structs = traceback_structures(0, l, &dp, &p);
-            println!("[{}:] {}", l+1, sequence[0..=l].iter().map(|d| format!("{}", d)).collect::<Vec<_>>().join(" "));
             for st in all_structs {
-                println!("{}", DotBracketVec::try_from(&PairTable(st)).unwrap());
+                result.push(DotBracketVec::try_from(&PairTable(st)).unwrap());
             }
         }
+        result
     }
 
-    pub fn get_completed_segment_complexes(&self, registry: &DomainRegistry) -> () {
+    pub fn get_segment_transciption_complexes(&self, registry: &DomainRegistry) -> Vec<DotBracketVec> {
         let sequence = &self.get_domain_sequence();
         let p = build_pair_scores(sequence, &registry);
         let dp = nussinov(&p);
 
         let mut lt = 0;
+        let mut result: Vec<DotBracketVec> = vec![];
         for s in self.segments.iter() {
             lt += s.len();
             let all_structs = traceback_structures(0, lt-1, &dp, &p);
-            println!("[{}:] {}", lt, sequence[0..lt].iter().map(|d| format!("{}", d)).collect::<Vec<_>>().join(" "));
             for st in all_structs {
-                println!("{}", DotBracketVec::try_from(&PairTable(st)).unwrap());
+                result.push(DotBracketVec::try_from(&PairTable(st)).unwrap());
             }
         }
+        result
     }
 
-    pub fn get_segment_acfp(&self, registry: &DomainRegistry) -> Result<(), String> {
+    pub fn get_adibatic_acfp(&self, registry: &DomainRegistry) -> Vec<DotBracketVec> {
         let sequence = &self.get_domain_sequence();
+        let logic_indices = &self.get_logic_indices();
         let p = build_pair_scores(sequence, registry);
         let dp = nussinov(&p);
 
-        // Collect indices of all logic domains
-        let logic_indices: std::collections::HashSet<usize> = self.segments.iter()
-            .enumerate()
-            .flat_map(|(si, seg)| {
-                let offset: usize = self.segments[..si].iter().map(|s| s.len()).sum();
-                std::iter::once(offset + seg.left_support.len()) // index of logic domain in full sequence
-            })
-        .collect();
+        let mut result: Vec<DotBracketVec> = vec![];
+        let mut lt = 0;
+        for s in self.segments.iter() {
+            lt += s.len();
+            let all_structs = traceback_structures(0, lt - 1, &dp, &p);
+
+            for st in all_structs {
+                let dbv = extract_logic_dbv(&st, logic_indices);
+                result.push(dbv);
+            }
+        }
+        result
+    }
+
+    pub fn implements_acfp(&self, 
+        acfp: &[DotBracketVec],
+        registry: &DomainRegistry,
+    ) -> bool {
+        let sequence = &self.get_domain_sequence();
+        let logic_indices = &self.get_logic_indices();
+        let p = build_pair_scores(sequence, registry);
+        let dp = nussinov(&p);
 
         let mut lt = 0;
         for s in self.segments.iter() {
             lt += s.len();
             let all_structs = traceback_structures(0, lt - 1, &dp, &p);
 
-            println!(
-                "[{}:] {}",
-                lt,
-                sequence[0..lt]
-                .iter()
-                .map(|d| format!("{}", d))
-                .collect::<Vec<_>>()
-                .join(" ")
-            );
+            if all_structs.len() > 1 {
+                return false
+            }
 
-            for st in all_structs {
-                let mut dbv = vec![];
-                
-                for (i, &j_opt) in st.iter().enumerate() {
-                    if !logic_indices.contains(&i) {
-                        continue;
-                    }
-                    match j_opt {
-                        Some(j) => {
-                            if j > i { 
-                                dbv.push(DotBracket::Open);
-                            } else if j < i {
-                                dbv.push(DotBracket::Close);
-                            } else {
-                                return Err(StructureError::InvalidPairTable(i).to_string());
-                            }
-                        },
-                        None => dbv.push(DotBracket::Unpaired),
-                    }
-                }
-
-                println!("{:?}", dbv);
+            let dbv = extract_logic_dbv(&all_structs[0], logic_indices);
+            if dbv != acfp[dbv.len()-1] {
+                return false
             }
         }
-        Ok(())
+        true
     }
-
 
     pub fn get_domain_sequence(&self) -> DomainRefVec {
         self.segments
@@ -128,12 +119,23 @@ impl SegmentSequence {
             .collect()
     }
         
+    fn get_logic_indices(&self) -> IntSet<usize> {
+        // The indices corresponding to logic domains after
+        // calling get_domain_sequence()
+        self.segments.iter()
+            .enumerate()
+            .flat_map(|(si, seg)| {
+                let offset: usize = self.segments[..si].iter().map(|s| s.len()).sum();
+                std::iter::once(offset + seg.left_support.len()) // index of logic domain in full sequence
+            })
+        .collect()
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Segment {
     left_support: DomainRefVec,  // ["s1", "s2"], or ["s2*", "s1*"]
-    logic: DomainRef,               // "L1", "L2*", etc.
+    logic: DomainRef,            // "L1", "L2*", etc.
     right_support: DomainRefVec, // ["s1", "s2"], or ["s2*", "s1*"]
     timer: DomainRef,
 }
@@ -166,16 +168,7 @@ struct DomainBookkeeper {
 }
 
 impl DomainBookkeeper {
-    pub fn new(support_length: usize, logic_length: usize) -> Self {
-        Self {
-            next_logic_id: 0,
-            next_support_id: 0,
-            support_length,
-            logic_length,
-        }
-    }
-
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             next_logic_id: 0,
             next_support_id: 0,
@@ -183,8 +176,18 @@ impl DomainBookkeeper {
             logic_length: 8,
         }
     }
+
+    fn new_logic_single(&mut self, i: usize, registry: &mut DomainRegistry) -> Segment {
+        self.next_logic_id += 1;
+        Segment {
+            left_support: Vec::new(),
+            logic: registry.intern(&format!("L{}", self.next_logic_id), self.logic_length),
+            right_support: Vec::new(),
+            timer: registry.intern(&format!("T{}", i), i),
+        }
+    }
  
-    pub fn new_logic_pair(&mut self, i: usize, j: usize, weight: usize, registry: &mut DomainRegistry) -> (Segment, Segment) {
+    fn new_logic_pair(&mut self, i: usize, j: usize, weight: usize, registry: &mut DomainRegistry) -> (Segment, Segment) {
         self.next_logic_id += 1;
 
         let mut left_support = Vec::new();
@@ -246,6 +249,32 @@ impl DomainBookkeeper {
 
 }
 
+fn extract_logic_dbv(structure: &Vec<Option<usize>>, indices: &IntSet<usize>) -> DotBracketVec {
+    let mut dbv = vec![];
+
+    for (i, &j_opt) in structure.iter().enumerate() {
+        if !indices.contains(&i) {
+            continue;
+        }
+        match j_opt {
+            Some(j) => {
+                if !indices.contains(&j) {
+                    panic!("Pair ({i},{j}) includes out-of-bounds index not in subset");
+                }
+                if j > i { 
+                    dbv.push(DotBracket::Open);
+                } else if j < i {
+                    dbv.push(DotBracket::Close);
+                } else {
+                    panic!("{}", StructureError::InvalidPairTable(i).to_string());
+                }
+            },
+            None => dbv.push(DotBracket::Unpaired),
+        }
+    }
+    DotBracketVec(dbv)
+}
+
 fn design_segments(
     components: &[Vec<usize>],
     pair_hierarchy: &FxHashMap<(usize, usize), usize>,
@@ -272,6 +301,7 @@ fn design_segments(
         .collect();
 
     while let Some(((i, j), w)) = queue.pop_front() {
+        println!("{} {}: {}", i, j, w);
         let comp_id = base_to_component[&i];
         assert_eq!(base_to_component[&j], comp_id);
 
@@ -365,7 +395,19 @@ fn design_segments(
         }
     }
 
-    seq[1..].to_vec()
+    
+    let mut result = seq[1..].to_vec();
+
+    for (i, seg) in seq[1..].iter().enumerate() {
+        if let Some(_) = seg {
+            continue;
+        } else {
+            let new_seg = bookkeeper.new_logic_single(i+1, registry);
+            result[i] = Some(new_seg);
+        }
+    }
+
+    result
 }
 
 
@@ -425,36 +467,68 @@ mod tests {
     }
 
     #[test]
-    fn test_design_acfp_04() {
-        let acfp = Acfp::try_from(". () (). ()() (().) ").unwrap();
-        assert!(acfp.is_valid());
-
+    fn test_empty_acfp() {
+        let acfp = Acfp::try_from(". .. ... ....").unwrap();
         let mut registry = DomainRegistry::new();
-        let segments = SegmentSequence::design_from_acfp(&acfp, &mut registry).unwrap();
-        println!("{:?}", segments);
+        let segseq = SegmentSequence::design_from_acfp(&acfp, &mut registry).unwrap();
 
-        let sequence = &segments.get_domain_sequence();
-        println!("{}", sequence.iter().map(|d| format!("{}", d)).collect::<Vec<_>>().join(" "));
+        println!("{}", &segseq.get_domain_sequence().iter()
+            .map(|d| format!("{}", d)).collect::<Vec<_>>().join(" "));
 
-        let p = build_pair_scores(sequence, &registry);
-        let dp = nussinov(&p);
-        
-        let mut lt = 0;
-        for s in segments.segments.iter() {
-            lt += s.len();
-            let all_structs = traceback_structures(0, lt-1, &dp, &p);
-            println!("{:?} {:?}", s.full_sequence().iter().map(|d| format!("{}", d)).collect::<Vec<_>>().join(" "), s.len()-1);
-            println!("{}", DotBracketVec::try_from(&PairTable(all_structs[0].clone())).unwrap());
-            assert_eq!(all_structs.len(), 1);
+        for db in &segseq.get_domain_transcription_complexes(&registry) {
+            println!("{:<2} {}", db.len(), db);
+        }
+        for db in &segseq.get_segment_transciption_complexes(&registry) {
+            println!("{:<2} {}", db.len(), db);
+        }
+        for db in &segseq.get_adibatic_acfp(&registry) {
+            println!("{:<2} {}", db.len(), db);
         }
 
-        let _ = &segments.get_detailed_segment_complexes(&registry);
-        println!();
-        let _ = &segments.get_completed_segment_complexes(&registry);
-        println!();
-        let _ = &segments.get_segment_acfp(&registry);
-        assert!(false);
+        assert!(segseq.implements_acfp(acfp.path(), &registry));
     }
 
+    #[test]
+    fn test_valid_acfp_01() {
+        let acfp = Acfp::try_from(". () (). ()() (().) ").unwrap();
+        let mut registry = DomainRegistry::new();
+        let segseq = SegmentSequence::design_from_acfp(&acfp, &mut registry).unwrap();
+
+        println!("{}", &segseq.get_domain_sequence().iter()
+            .map(|d| format!("{}", d)).collect::<Vec<_>>().join(" "));
+
+        for db in &segseq.get_domain_transcription_complexes(&registry) {
+            println!("{:<2} {}", db.len(), db);
+        }
+        for db in &segseq.get_segment_transciption_complexes(&registry) {
+            println!("{:<2} {}", db.len(), db);
+        }
+        for db in &segseq.get_adibatic_acfp(&registry) {
+            println!("{:<2} {}", db.len(), db);
+        }
+
+        assert!(segseq.implements_acfp(acfp.path(), &registry));
+    }
+
+    #[test]
+    fn test_unsaturated_acfp() {
+        let acfp = Acfp::try_from(". () (). .(.) .(..) .((.))").unwrap();
+        let mut registry = DomainRegistry::new();
+        let segseq = SegmentSequence::design_from_acfp(&acfp, &mut registry).unwrap();
+        println!("{}", &segseq.get_domain_sequence().iter()
+            .map(|d| format!("{}", d)).collect::<Vec<_>>().join(" "));
+
+        for db in &segseq.get_domain_transcription_complexes(&registry) {
+            println!("{:<2} {}", db.len(), db);
+        }
+        for db in &segseq.get_segment_transciption_complexes(&registry) {
+            println!("{:<2} {}", db.len(), db);
+        }
+        for db in &segseq.get_adibatic_acfp(&registry) {
+            println!("{:<2} {}", db.len(), db);
+        }
+
+        assert!(!segseq.implements_acfp(acfp.path(), &registry));
+    }
 
 }

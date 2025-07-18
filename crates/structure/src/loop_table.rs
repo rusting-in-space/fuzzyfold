@@ -2,8 +2,8 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
 
-use crate::error::StructureError;
-use crate::pair_table::PairTable;
+use crate::StructureError;
+use crate::PairTable;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopInfo {

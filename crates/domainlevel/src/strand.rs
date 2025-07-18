@@ -7,6 +7,7 @@ use rustc_hash::FxHashMap;
 
 use crate::DomainRefVec;
 
+#[allow(dead_code)]
 pub struct Strand {
     strand: DomainRefVec,
     name: String,
@@ -18,7 +19,7 @@ pub struct StrandRegistry {
     counter: usize,
 }
 
-
+#[allow(dead_code)]
 impl StrandRegistry {
     pub fn new() -> Self {
         Self {

@@ -1,7 +1,7 @@
 
 use std::convert::TryFrom;
-use crate::pair_table::PairTable;
-use crate::error::StructureError;
+use crate::PairTable;
+use crate::StructureError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pair(pub usize, pub usize);

@@ -1,8 +1,8 @@
 use std::ops::{Deref, DerefMut};
 use std::convert::TryFrom;
-use crate::error::StructureError;
-use crate::dotbracket::{DotBracket, DotBracketVec};
-use crate::pair_list::{Pair, PairList};
+use crate::StructureError;
+use crate::{DotBracket, DotBracketVec};
+use crate::{Pair, PairList};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairTable(pub Vec<Option<usize>>);

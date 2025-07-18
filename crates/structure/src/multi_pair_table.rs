@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
-use crate::error::StructureError;
-use crate::dotbracket::{DotBracket, DotBracketVec};
+use crate::StructureError;
+use crate::DotBracket;
+use crate::DotBracketVec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MultiPairTable(pub Vec<Vec<Option<(usize, usize)>>>);

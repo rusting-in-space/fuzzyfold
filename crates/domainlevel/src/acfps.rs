@@ -18,6 +18,8 @@ use crate::checks::{
     nussinov, 
     traceback_structures,
 };
+use crate::DomainRegistry;
+use crate::SegmentSequence;
 
 #[derive(Debug, Clone)]
 pub struct Acfp {
@@ -110,8 +112,19 @@ impl Acfp {
         uf.connected_components()
     }
 
+    pub fn has_valid_design(&self) -> bool {
+        let Some(_) = self.pair_hierarchy() else {
+            return false;
+        };
+        let mut registry = DomainRegistry::new();
+        let segseq = SegmentSequence::design_from_acfp(&self, &mut registry).unwrap();
+        segseq.implements_acfp(&self.path(), &registry)
+    }
+
     pub fn is_valid(&self) -> bool {
-        self.is_cycle_free() && self.has_valid_pair_hierarchy()
+        self.is_cycle_free() 
+            && self.has_valid_pair_hierarchy() 
+            && self.has_valid_design()
     }
 
 }
@@ -368,25 +381,13 @@ mod tests {
     fn test_many_valid_acfps() {
         let acfp = Acfp::try_from(". () (.) (.). (.)() ((..))").unwrap();
         assert!(acfp.is_valid());
-        let acfp = Acfp::try_from(". .. .() ..() (.()) ((()))").unwrap();
-        assert!(acfp.is_valid());
-        let acfp = Acfp::try_from(". .. (.) (.). (().) (()())").unwrap();
-        assert!(acfp.is_valid());
         let acfp = Acfp::try_from(". .. (.) (..) (..). ((..))").unwrap();
         assert!(acfp.is_valid());
         let acfp = Acfp::try_from(". .. (.) (()) (()). (()())").unwrap();
         assert!(acfp.is_valid());
-        let acfp = Acfp::try_from(". () (). ().. (().) (()())").unwrap();
-        assert!(acfp.is_valid());
-        let acfp = Acfp::try_from(". () (). (()) (()). (()())").unwrap();
-        assert!(acfp.is_valid());
-        let acfp = Acfp::try_from(". () (.) ()() ()(). ()(())").unwrap();
-        assert!(acfp.is_valid());
         let acfp = Acfp::try_from(". () (.) (.). ()(.) ()(())").unwrap();
         assert!(acfp.is_valid());
         let acfp = Acfp::try_from(". () .() .(). ()(.) ()(())").unwrap();
-        assert!(acfp.is_valid());
-        let acfp = Acfp::try_from(". () .() ()() ()(). ()(())").unwrap();
         assert!(acfp.is_valid());
     }
 
@@ -400,7 +401,24 @@ mod tests {
         assert!(!acfp.is_valid());
     }
 
-    //#[test]
+
+    #[test]
+    fn test_implicit_invalid_acfps() {
+        let acfp = Acfp::try_from(". .. .() ..() (.()) ((()))").unwrap();
+        assert!(!acfp.is_valid());
+        let acfp = Acfp::try_from(". .. (.) (.). (().) (()())").unwrap();
+        assert!(!acfp.is_valid());
+        let acfp = Acfp::try_from(". () (). ().. (().) (()())").unwrap();
+        assert!(!acfp.is_valid());
+        let acfp = Acfp::try_from(". () (). (()) (()). (()())").unwrap();
+        assert!(!acfp.is_valid());
+        let acfp = Acfp::try_from(". () (.) ()() ()(). ()(())").unwrap();
+        assert!(!acfp.is_valid());
+        let acfp = Acfp::try_from(". () .() ()() ()(). ()(())").unwrap();
+        assert!(!acfp.is_valid());
+    }
+
+    #[test]
     fn test_unsaturated_acfps() {
         let acfp = Acfp::try_from(". () (). .(.) .(..) .((.))").unwrap();
         assert!(!acfp.is_valid()); // It should not be!
