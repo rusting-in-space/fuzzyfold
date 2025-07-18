@@ -72,22 +72,23 @@ impl Acfp {
         let Some(ph) = self.pair_hierarchy() else {
             return false;
         };
-
+       
         //NOTE: this is matix only considers explicit 
         //complementarity, which may lead to unsaturated structures.
         let n = self.length;
         let mut p = Array2::from_elem((n, n), 0);
         for (e, c) in ph {
-            p[(e.0-1, e.1-1)] += c;
-            p[(e.1-1, e.0-1)] += c;
+            // We are putting 10 extra, to reward the fact 
+            // that a pair is formed.
+            p[(e.0-1, e.1-1)] += 100 + c;
+            p[(e.1-1, e.0-1)] += 100 + c;
         }
 
         let dpm = nussinov(&p);
         for ss in self.db_path.iter() {
             let nss = traceback_structures(0, ss.len() - 1, &dpm, &p);
-            if nss.len() != 1 {
-                println!("{} for ss {:?}", nss.len(), nss);
-                return false;
+            if nss.len() > 1 {
+                return false
             } 
             let dbs = DotBracketVec::try_from(&PairTable(nss[0].clone())).unwrap();
             if dbs != *ss {
@@ -112,19 +113,18 @@ impl Acfp {
         uf.connected_components()
     }
 
-    pub fn has_valid_design(&self) -> bool {
+    pub fn has_valid_design(&self, registry: &mut DomainRegistry) -> bool {
         let Some(_) = self.pair_hierarchy() else {
             return false;
         };
-        let mut registry = DomainRegistry::new();
-        let segseq = SegmentSequence::design_from_acfp(&self, &mut registry).unwrap();
+        let segseq = SegmentSequence::design_from_acfp(&self, registry).unwrap();
         segseq.implements_acfp(&self.path(), &registry)
     }
 
-    pub fn is_valid(&self) -> bool {
+    pub fn is_valid(&self, registry: &mut DomainRegistry) -> bool {
         self.is_cycle_free() 
-            && self.has_valid_pair_hierarchy() 
-            && self.has_valid_design()
+            && self.has_valid_pair_hierarchy()
+            && self.has_valid_design(registry)
     }
 
 }
@@ -252,7 +252,7 @@ pub fn filtered_acfps<'a>(
         sets: &'a [Vec<Vec<DotBracket>>],    // remaining structure sets
         acfp: Acfp,
     ) -> Box<dyn Iterator<Item = Acfp> + 'a> {
-        if !acfp.is_valid() {
+        if !acfp.is_valid(&mut DomainRegistry::new()) {
             return Box::new(std::iter::empty());
         }
 
@@ -283,7 +283,7 @@ mod tests {
         let acfp = Acfp::try_from(". () .() (()) ").unwrap();
         assert!(acfp.is_cycle_free());
         assert!(acfp.has_valid_pair_hierarchy());
-        assert!(acfp.is_valid());
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
     }
 
     #[test]
@@ -291,7 +291,7 @@ mod tests {
         let acfp = Acfp::try_from(". () (.) (()) ").unwrap();
         assert!(!acfp.is_cycle_free());
         assert!(acfp.has_valid_pair_hierarchy());
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
 
         let ph = acfp.pair_hierarchy().unwrap();
         assert_eq!(ph.get(&(1,2)), Some(&1));
@@ -305,7 +305,7 @@ mod tests {
         let acfp = Acfp::try_from(". () (). ()() (()). ").unwrap();
         assert!(!acfp.is_cycle_free());
         assert!(!acfp.has_valid_pair_hierarchy());
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
     }
 
     #[test]
@@ -314,7 +314,7 @@ mod tests {
         println!("{:?}", acfp.pair_hierarchy());
         assert!(acfp.is_cycle_free());
         assert!(acfp.has_valid_pair_hierarchy());
-        assert!(acfp.is_valid());
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
     }
 
     #[test]
@@ -322,7 +322,7 @@ mod tests {
         let acfp = Acfp::try_from(". .. ... .(.) ((.)) .(().)").unwrap();
         assert!(acfp.is_cycle_free());
         assert!(!acfp.has_valid_pair_hierarchy());
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
     }
 
     #[test]
@@ -330,102 +330,124 @@ mod tests {
         let acfp = Acfp::try_from(". () (.) (.). (.)() ((..))").unwrap();
         assert!(acfp.is_cycle_free());
         assert!(acfp.has_valid_pair_hierarchy());
-        assert!(acfp.is_valid())
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
     }
 
     #[test]
     fn test_many_invalid_acfps() {
         let acfp = Acfp::try_from(". () (). ()() (.()) ()(())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (). ()() .(()) ()(())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (.) ()() (.()) (.)(.)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (.) ()() .(()) (.)(.)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (). (()) (()). ()(())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (). ().. (().) ()(())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (). .(.) ((.)) ().(.)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() (()) (()). .((.))").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() (()) (()). ()(..)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() (()) ()(.) .((.))").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() (()) ()(.) ()(.).").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() (()) ()(.) ()(..)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() (()) ()(.) (())()").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() (()) ()(.) (.(.))").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() .(). (().) ()(..)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". .. .() (()) (()). .(().)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". .. .() (()) (()). .((.))").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (.) (.). (.)() ((.).)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() (()) (()). ()(())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() .(). (().) ()(())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
     }
 
     #[test]
     fn test_many_valid_acfps() {
         let acfp = Acfp::try_from(". () (.) (.). (.)() ((..))").unwrap();
-        assert!(acfp.is_valid());
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". .. (.) (..) (..). ((..))").unwrap();
-        assert!(acfp.is_valid());
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". .. (.) (()) (()). (()())").unwrap();
-        assert!(acfp.is_valid());
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (.) (.). ()(.) ()(())").unwrap();
-        assert!(acfp.is_valid());
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() .(). ()(.) ()(())").unwrap();
-        assert!(acfp.is_valid());
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
     }
 
     #[test]
     fn test_special_acfps() {
         let acfp = Acfp::try_from(". () .() .(). .()() .((.))").unwrap();
-        assert!(!acfp.is_valid()); 
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (.) (.). (.)() (.(.))").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". .. (.) ..() (.)() ((.).)").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
     }
-
 
     #[test]
     fn test_implicit_invalid_acfps() {
         let acfp = Acfp::try_from(". .. .() ..() (.()) ((()))").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". .. (.) (.). (().) (()())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (). ().. (().) (()())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (). (()) (()). (()())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () (.) ()() ()(). ()(())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
         let acfp = Acfp::try_from(". () .() ()() ()(). ()(())").unwrap();
-        assert!(!acfp.is_valid());
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
     }
 
     #[test]
+    fn test_saturation_issues_acfps() {
+        let acfp = Acfp::try_from(". .. .() (()) (()). (.(.))").unwrap();
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
+        let acfp = Acfp::try_from(". .. .() (()) (()). ((..))").unwrap();
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
+        let acfp = Acfp::try_from(". .. (.) (.). (.)() ((..))").unwrap();
+        assert!(acfp.is_valid(&mut DomainRegistry::new()));
+    }
+
+    
+    #[test]
     fn test_unsaturated_acfps() {
         let acfp = Acfp::try_from(". () (). .(.) .(..) .((.))").unwrap();
-        assert!(!acfp.is_valid()); // It should not be!
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
 
         let acfp = Acfp::try_from(". () (). (..) (...) (.(.))").unwrap();
-        assert!(!acfp.is_valid()); // It should not be!
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
     }
+
+    #[test]
+    fn test_pseudoknotted_acfps() {
+        let acfp = Acfp::try_from(". () (). .(.) .(..) .(...) .(...). .((...))").unwrap();
+        assert!(acfp.has_valid_design(&mut DomainRegistry::new()));
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
+        let acfp = Acfp::try_from(". () (). (..) (...) (....) (....). (.(...))").unwrap();
+        assert!(acfp.has_valid_design(&mut DomainRegistry::new()));
+        assert!(!acfp.is_valid(&mut DomainRegistry::new()));
+    }
+
+
 }
 
 

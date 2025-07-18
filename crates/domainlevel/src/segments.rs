@@ -301,7 +301,6 @@ fn design_segments(
         .collect();
 
     while let Some(((i, j), w)) = queue.pop_front() {
-        println!("{} {}: {}", i, j, w);
         let comp_id = base_to_component[&i];
         assert_eq!(base_to_component[&j], comp_id);
 
