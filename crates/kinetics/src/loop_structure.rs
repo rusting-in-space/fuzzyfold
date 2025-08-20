@@ -13,9 +13,12 @@ pub struct LoopCache {
 }
 
 #[derive(Debug)]
-pub struct LoopStructure {
+pub struct LoopStructure<'a, M: EnergyModel> {
+    sequence: &'a [Base],
+    model: &'a M,
+
     loop_list: IntMap<usize, (NearestNeighborLoop, i32)>,
-    l_indices: IntSet<usize>, // holds free usize for loop_list & loop_neighbors
+    l_indices: IntSet<usize>,
     
     pair_list: IntMap<usize, (usize, usize)>,
     p_indices: IntSet<usize>,
@@ -30,7 +33,15 @@ pub struct LoopStructure {
     pair_neighbors: IntMap<usize, i32>, // pair_list index to deltaE
 }
 
-impl LoopStructure {
+fn allocate_index(indices: &mut IntSet<usize>, fallback: usize) -> usize {
+    indices.iter().next().cloned().map(|x| {
+        indices.remove(&x);
+        x
+    }).unwrap_or(fallback)
+}
+
+
+impl<'a, M: EnergyModel> LoopStructure<'a, M> {
     pub fn get_add_neighbors(&self) -> Vec<(usize, usize, i32)> {
         self.loop_neighbors
             .values()
@@ -52,8 +63,8 @@ impl LoopStructure {
             .sum()
     }
 
-    /// Produce a new updated SecStruct.
-    pub fn apply_del_move<E: EnergyModel>(&mut self, pl_idx: usize, sequence: &[Base], model: &E) {
+     /// Produce a new updated SecStruct.
+    pub fn apply_del_move(&mut self, pl_idx: usize) {
         let &(i, j) = self.pair_list.get(&pl_idx).expect("Missing pair_list entry.");
 
         let &lli = self.loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
@@ -79,19 +90,18 @@ impl LoopStructure {
         self.l_indices.insert(llj);
 
         self.loop_list.insert(lli, (combo.clone(), combo_energy));
-        let neighbors = get_loop_neighbors(&combo, &combo_energy, sequence, model);
+        let neighbors = get_loop_neighbors(&combo, &combo_energy, self.sequence, self.model);
         self.loop_neighbors.insert(lli, neighbors);
 
-        for k in &combo.inclusive_unpaired_indices(sequence.len()) {
+        for k in &combo.inclusive_unpaired_indices(self.sequence.len()) {
             assert!(self.loop_lookup[k] == lli || self.loop_lookup[k] == llj);
             self.loop_lookup.insert(*k, lli);
         }
     }
 
     /// Produce a new updated SecStruct.
-    pub fn apply_add_move<E: EnergyModel>(&mut self, i: usize, j: usize, 
-        sequence: &[Base], model: &E
-    ) {
+    pub fn apply_add_move(&mut self, i: usize, j: usize) {
+        let model = self.model;
         let &lli = self.loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
 
         assert_eq!(
@@ -102,38 +112,30 @@ impl LoopStructure {
         let (combo, c_energy) = self.loop_list.get(&lli).expect("Missing loop_list entry lli.");
         let (outer, inner) = combo.split_loop(i, j);
         //NOTE; could look that up.
-        let outer_energy = model.energy_of_loop(sequence, &outer);
-        let inner_energy = model.energy_of_loop(sequence, &inner);
+        let outer_energy = model.energy_of_loop(self.sequence, &outer);
+        let inner_energy = model.energy_of_loop(self.sequence, &inner);
         let delta = (outer_energy + inner_energy) - c_energy;
   
         self.loop_list.remove(&lli);
         self.loop_neighbors.remove(&lli);
         self.loop_list.insert(lli, (outer.clone(), outer_energy));
         self.loop_neighbors.insert(lli, 
-            get_loop_neighbors(&outer, &outer_energy, sequence, model));
+            get_loop_neighbors(&outer, &outer_energy, self.sequence, model));
 
-        let llj = if let Some(&x) = self.l_indices.iter().next() {
-            self.l_indices.remove(&x); x
-        } else {
-            self.loop_list.len()
-        };
+        let llj = allocate_index(&mut self.l_indices, self.loop_list.len());
 
         self.loop_list.insert(llj, (inner.clone(), inner_energy));
         self.loop_neighbors.insert(llj, 
-            get_loop_neighbors(&inner, &inner_energy, sequence, model));
+            get_loop_neighbors(&inner, &inner_energy, self.sequence, model));
 
-        let pli = if let Some(&x) = self.p_indices.iter().next() {
-            self.p_indices.remove(&x); x
-        } else {
-            self.pair_list.len()
-        };
+        let pli = allocate_index(&mut self.p_indices, self.pair_list.len());
         self.pair_list.insert(pli, (i, j));
 
-        for k in &outer.inclusive_unpaired_indices(sequence.len()) {
+        for k in &outer.inclusive_unpaired_indices(self.sequence.len()) {
             self.loop_lookup.insert(*k, lli);
         }
 
-        for k in &inner.inclusive_unpaired_indices(sequence.len()) {
+        for k in &inner.inclusive_unpaired_indices(self.sequence.len()) {
             self.loop_lookup.insert(*k, llj);
         }
 
@@ -143,10 +145,10 @@ impl LoopStructure {
 
 }
 
-impl<T: LoopDecomposition, M: EnergyModel> TryFrom<(&[Base], &T, &M)> for LoopStructure {
+impl<'a, T: LoopDecomposition, M: EnergyModel> TryFrom<(&'a [Base], &T, &'a M)> for LoopStructure<'a, M> {
     type Error = String;
 
-    fn try_from((sequence, pairings, model): (&[Base], &T, &M)) -> Result<Self, Self::Error> {
+    fn try_from((sequence, pairings, model): (&'a [Base], &T, &'a M)) -> Result<Self, Self::Error> {
         let mut loop_list = IntMap::default();
         let mut pair_list = IntMap::default();
         let mut loop_lookup = IntMap::default();
@@ -183,6 +185,8 @@ impl<T: LoopDecomposition, M: EnergyModel> TryFrom<(&[Base], &T, &M)> for LoopSt
         }
 
         Ok(LoopStructure {
+            sequence,
+            model,
             loop_list,
             l_indices: IntSet::default(),
             pair_list,
@@ -265,7 +269,7 @@ mod tests {
         }
 
         println!("Adddig 1, 5");
-        ls.apply_add_move(1, 5, &sequence[..], &model);
+        ls.apply_add_move(1, 5);
         println!("{:?} {}", ls, ls.energy());
         println!("Add neighbors");
         for (i, j, de) in ls.get_add_neighbors() {
@@ -278,7 +282,7 @@ mod tests {
         }
 
         println!("Removing 1, 5");
-        ls.apply_del_move(0, &sequence[..], &model);
+        ls.apply_del_move(0);
         println!("{:?} {}", ls, ls.energy());
         println!("Add neighbors");
         for (i, j, de) in ls.get_add_neighbors() {
@@ -289,7 +293,6 @@ mod tests {
         for (pi, (i, j), de) in ls.get_del_neighbors() {
             println!("{} ({}, {}), {}", pi, i, j, de);
         }
-
 
 
         let struct_1 = PairTable::try_from(struct_1).expect("valid");

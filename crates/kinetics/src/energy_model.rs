@@ -8,6 +8,7 @@ use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use structure::PairTable;
 
+#[derive(Debug)]
 pub struct ViennaRNA {
     dangles: u8,
     temperature: i32, // Kelvin?
