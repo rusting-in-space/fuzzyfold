@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use crate::EnergyModel;
-use crate::utils::Base;
+use crate::energy_tables::Base;
 
 pub struct LoopCache {
     eval_loop: FxHashMap<NearestNeighborLoop, i32>,
@@ -244,7 +244,7 @@ mod tests {
     use super::*;
     use crate::ViennaRNA;
     use structure::PairTable;
-    use crate::utils::basify;
+    use crate::energy_tables::basify;
 
     #[test]
     fn test_loop_structure() {
@@ -252,7 +252,7 @@ mod tests {
         let struct_0 = "...........";
         let struct_1 = ".(....)....";
 
-        let model = ViennaRNA::new();
+        let model = ViennaRNA::default();
         let sequence = basify(sequence);
         let struct_0 = PairTable::try_from(struct_0).expect("valid");
         let mut ls = LoopStructure::try_from((&sequence[..], &struct_0, &model)).expect("bla");

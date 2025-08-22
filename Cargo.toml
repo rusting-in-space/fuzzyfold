@@ -1,5 +1,8 @@
 [workspace]
 resolver = "3"
-members = [ "crates/domainlevel", "crates/kinetics","crates/plotting", "crates/structure"]
+members = ["crates/domainlevel", 
+           "crates/kinetics",
+           "crates/plotting", 
+           "crates/structure"]
 
 

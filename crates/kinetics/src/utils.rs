@@ -1,24 +1,6 @@
 use structure::PairTable;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Base { A, C, G, U }
-
-impl TryFrom<char> for Base {
-    type Error = ();
-    fn try_from(c: char) -> Result<Self, ()> {
-        Ok(match c.to_ascii_uppercase() {
-            'A' => Base::A,
-            'C' => Base::C,
-            'G' => Base::G,
-            'U' | 'T' => Base::U,
-            _ => return Err(()),
-        })
-    }
-}
-
-pub fn basify(seq: &str) -> Vec<Base> {
-    seq.chars().map(Base::try_from).collect::<Result<_, _>>().unwrap()
-}
+use crate::energy_tables::Base;
+use crate::energy_tables::basify;
 
 pub struct SecondaryStructure {
     pub sequence: Vec<Base>,

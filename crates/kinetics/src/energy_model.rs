@@ -1,42 +1,140 @@
-// Intuition:
-//let model = ViennaRNA::from_parameter_file("turner2004.par");
-//let energy = model.energy_of_structure(&sequence, &pairings);
-//let energy = model.energy_of_pair(&sequence, &pairings, i, j);
 
-use crate::utils::Base;
+use rustc_hash::FxHashMap;
+use strum::EnumCount;
+
 use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use structure::PairTable;
 
+use crate::energy_tables::Base;
+use crate::energy_tables::PairTypeRNA;
+use crate::energy_tables::pair_type;
+
 #[derive(Debug)]
 pub struct ViennaRNA {
+    temperature: f64,
     dangles: u8,
-    temperature: i32, // Kelvin?
+
+    lxc37: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
+
+    min_hp_size: usize,
+    mismatch_hairpin: [[[i32; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
+    mismatch_hairpin_enthalpies: [[[i32; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
+    hairpin: [Option<i32>; 31],
+    hairpin_enthalpies: [Option<i32>; 31],
+    hairpin_sequences: FxHashMap<Vec<Base>, (i32, i32)>,
+
+    stack: [[Option<i32>; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
+    int11: [[[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
+    int11_enthalpies: [[[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
+
 }
 
 impl ViennaRNA {
-    pub fn new() -> Self {
+    pub fn default() -> Self {
         ViennaRNA {
+            temperature: 37.0,
             dangles: 0,
-            temperature: 37,
+
+            lxc37: 107.856, //TODO
+
+            min_hp_size: 3,
+            mismatch_hairpin: [[[0; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
+            mismatch_hairpin_enthalpies: [[[0; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
+            hairpin: [None; 31],
+            hairpin_enthalpies: [None; 31],
+            hairpin_sequences: FxHashMap::default(),
+
+            stack: [[None; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
+            int11: [[[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
+            int11_enthalpies: [[[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
         }
     }
 
-    fn hairpin(&self, _seq: &[Base]) -> i32 {
-        //assert!(can_pair(*seq[0], seq.last().unwrap(), true));
-        -3
+    fn param_stack(&self, f: &[Base], r: &[Base]) -> Option<i32> {
+        self.stack[pair_type(f[0], r[1]) as usize][pair_type(f[1], r[0]) as usize]
     }
 
-    fn interior(&self, _fwseq: &[Base], _revseq: &[Base]) -> i32 {
-       -2 
+    fn param_int11(&self, f: &[Base], r: &[Base]) -> Option<i32> {
+        self.int11[pair_type(f[0], r[2]) as usize][pair_type(f[2], r[0]) as usize][f[1] as usize][r[1] as usize]
+    }
+
+    fn param_int11_enthalpies(&self, f: &[Base], r: &[Base]) -> Option<i32> {
+        self.int11_enthalpies[pair_type(f[0], r[2]) as usize][pair_type(f[2], r[0]) as usize][f[1] as usize][r[1] as usize]
+    }
+
+    fn param_hairpin_sequences(&self, seq: &[Base]) -> Option<(i32, i32)> {
+        if seq.len() > 6 {
+            None
+        } else {
+            self.hairpin_sequences.get(seq).copied()
+        }
+    }
+
+    fn param_hairpin_length(&self, len: usize) -> Option<i32> {
+        self.hairpin[len]
+    }
+
+    fn param_hairpin_length_enthalpies(&self, len: usize) -> Option<i32> {
+        self.hairpin_enthalpies[len]
+    }
+
+    fn param_mismatch_hairpin(&self, c5: Base, m5: Base, m3: Base, c3: Base) -> i32 {
+        self.mismatch_hairpin[pair_type(c5, c3) as usize][m5 as usize][m3 as usize]
+    }
+
+    fn param_mismatch_hairpin_enthalpies(&self, c5: Base, m5: Base, m3: Base, c3: Base) -> i32 {
+        self.mismatch_hairpin_enthalpies[pair_type(c5, c3) as usize][m5 as usize][m3 as usize]
+    }
+
+    fn hairpin(&self, seq: &[Base]) -> i32 {
+        let n = seq.len() - 2;
+        assert!(n >= self.min_hp_size);
+        if let Some((g37, _h)) = self.param_hairpin_sequences(seq) {
+            return g37;
+        }
+        let mut energy = if n <= 30 {
+            self.param_hairpin_length(n).unwrap()
+        } else {
+            self.param_hairpin_length(30).unwrap() + (self.lxc37 * (n as f64).ln() / 30.) as i32
+        };
+        energy += self.param_mismatch_hairpin(seq[0], seq[1], seq[n], seq[n + 1]);
+        energy
+    }
+
+    fn interior(&self, fwdseq: &[Base], revseq: &[Base]) -> i32 {
+        if fwdseq.len() == 2 && revseq.len() == 2 {
+           return self.param_stack(fwdseq, revseq).unwrap(); 
+           
+        } else if fwdseq.len() == 3 && revseq.len() == 3 {
+           return self.param_int11(fwdseq, revseq).unwrap(); 
+        } 
+
+        let n1 = fwdseq.len() - 2;
+        let n2 = revseq.len() - 2;
+        let a = -200.0; // 1.0 kcal/mol
+        let b =   30.0; // 0.3 kcal/mol
+        let c =   20.0; // 0.2 kcal/mol
+        let energy = a + b * (n1 + n2) as f64 + c * (n1 as f64 - n2 as f64).abs();
+        energy.round() as i32
     }
 
     fn multibranch(&self, segments: &[&[Base]]) -> i32 {
-        -1 * (segments.len() as i32)
+        let branches = segments.len();
+        let unpaired: usize = segments.iter().map(|s| s.len() - 2).sum();
+        let a = 340.0; // 3.4 kcal/mol = 34 dcal
+        let b =  40.0; // 0.4 kcal/mol = 4 dcal
+        let c =  10.0; // 0.1 kcal/mol = 1 dcal
+        let energy = a + b * (branches as f64) + c * (unpaired as f64);
+        energy.round() as i32
     }
 
-    fn exterior(&self, _segments: &[&[Base]]) -> i32 {
-        0 
+    fn exterior(&self, segments: &[&[Base]]) -> i32 {
+        if self.dangles == 0 || segments.len() == 0 {
+            0 
+        } else {
+            segments.iter().map(|s| if s.len() - 2 > 0 { -50i32 } else { 0i32 }).sum::<i32>()
+        } 
     }
 }
 
@@ -122,8 +220,7 @@ impl EnergyModel for ViennaRNA {
 
         match nn_loop {
             NearestNeighborLoop::Hairpin { closing: (i, j) } => {
-                let loop_seq = &sequence[i + 1..*j];
-                self.hairpin(loop_seq)
+                self.hairpin(&sequence[*i..=*j])
             }
             NearestNeighborLoop::Interior { closing: (i, j), inner: (k, l) } => {
                 let left = &sequence[*i..=*k];
@@ -157,14 +254,14 @@ impl EnergyModel for ViennaRNA {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::basify;
+    use crate::energy_tables::basify;
 
     #[test]
     fn test_basic_stuff() {
         let sequence = "GCAUACGAUCA";
         let struct_1 = ".(....)....";
 
-        let model = ViennaRNA::new();
+        let model = ViennaRNA::default();
         let sequence = basify(sequence);
         let struct_1 = PairTable::try_from(struct_1).expect("valid");
 
@@ -178,17 +275,17 @@ mod tests {
 
     #[test]
     fn test_fake_model() {
-        let sequence = "GCAUACGAUCA";
-        let pairings = ".((.(.)()))";
+        let sequence = "GCAUCCCCGAAAAUUG";
+        let pairings = ".((.(...)(...)))";
 
-        let model = ViennaRNA::new();
+        let model = ViennaRNA::default();
         let sequence = basify(sequence);
         let pairings = PairTable::try_from(pairings).expect("valid");
 
         let energy = model.energy_of_structure(&sequence, &pairings);
         println!("Total energy: {}", energy);
 
-        let energy = model.energy_of_pair(&sequence, &pairings, 2, 9);
+        let energy = model.energy_of_pair(&sequence, &pairings, 2, 14);
         println!("Pair energy: {}", energy);
     }
 }
