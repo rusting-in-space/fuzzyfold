@@ -3,22 +3,23 @@ use std::fmt;
 use std::fs::File;
 use std::path::Path;
 use std::io::{BufRead, BufReader};
-use std::error::Error;
 
 use strum::EnumCount;
 use strum_macros::EnumCount;
 use rustc_hash::FxHashMap;
 
-use crate::vrna_parsing::ParamFileSection;
-use crate::vrna_parsing::SectionParser;
+use crate::parameter_parsing::ParamFileSection;
+use crate::parameter_parsing::SectionParser;
 
 #[derive(Debug)]
 pub enum ParamError {
     Io(std::io::Error),
     Parse(String),
+    MissingValue(&'static str, usize),
+    InvalidHairpinSize(usize),
 }
 
-impl Error for ParamError {}
+impl std::error::Error for ParamError {}
 
 impl From<std::io::Error> for ParamError {
     fn from(e: std::io::Error) -> Self {
@@ -31,6 +32,12 @@ impl fmt::Display for ParamError {
         match self {
             ParamError::Io(e) => write!(f, "I/O error: {}", e),
             ParamError::Parse(msg) => write!(f, "Parse error: {}", msg),
+            ParamError::MissingValue(table, index) => {
+                write!(f, "Missing value in parameter table '{}' at index {}", table, index)
+            }
+            ParamError::InvalidHairpinSize(n) => {
+                write!(f, "Invalid hairpin size: {}", n)
+            }
         }
     }
 }
@@ -53,7 +60,10 @@ impl TryFrom<char> for Base {
 }
 
 pub fn basify(seq: &str) -> Vec<Base> {
-    seq.chars().map(Base::try_from).collect::<Result<_, _>>().unwrap()
+    seq.chars()
+        .map(Base::try_from)
+        .collect::<Result<_, _>>()
+        .unwrap_or_else(|_| panic!("Invalid character in sequence: {}", seq))
 }
 
 const PAIR_LOOKUP: [[PairTypeRNA; Base::COUNT]; Base::COUNT] = {
@@ -84,40 +94,44 @@ pub enum PairTypeRNA {
     NN,
 }
 
+const P: usize = PairTypeRNA::COUNT;
+const B: usize = Base::COUNT;
+
+#[derive(Debug)]
 pub struct EnergyTables {
-    pub stack: [[Option<i32>; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
-    pub stack_enthalpies: [[Option<i32>; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
+    pub stack:            [[Option<i32>; P]; P],
+    pub stack_enthalpies: [[Option<i32>; P]; P],
+                                                                          
+    pub mismatch_hairpin:            [[[Option<i32>; B]; B]; P],
+    pub mismatch_hairpin_enthalpies: [[[Option<i32>; B]; B]; P],
+    pub mismatch_interior:            [[[Option<i32>; B]; B]; P],
+    pub mismatch_interior_enthalpies: [[[Option<i32>; B]; B]; P],
+    pub mismatch_interior_1n:            [[[Option<i32>; B]; B]; P],
+    pub mismatch_interior_1n_enthalpies: [[[Option<i32>; B]; B]; P],
+    pub mismatch_interior_23:            [[[Option<i32>; B]; B]; P],
+    pub mismatch_interior_23_enthalpies: [[[Option<i32>; B]; B]; P],
+    pub mismatch_multi:            [[[Option<i32>; B]; B]; P],
+    pub mismatch_multi_enthalpies: [[[Option<i32>; B]; B]; P],
+    pub mismatch_exterior:            [[[Option<i32>; B]; B]; P],
+    pub mismatch_exterior_enthalpies: [[[Option<i32>; B]; B]; P],
+                                                                          
+    pub dangle5:            [[Option<i32>; B]; P],
+    pub dangle5_enthalpies: [[Option<i32>; B]; P],
+    pub dangle3:            [[Option<i32>; B]; P],
+    pub dangle3_enthalpies: [[Option<i32>; B]; P],
+                                                                          
+    pub int11:            Box<[[[[Option<i32>; B]; B]; P]; P]>,
+    pub int11_enthalpies: Box<[[[[Option<i32>; B]; B]; P]; P]>,
+    pub int21:            Box<[[[[[Option<i32>; B]; B]; B]; P]; P]>,
+    pub int21_enthalpies: Box<[[[[[Option<i32>; B]; B]; B]; P]; P]>,
+    pub int22:            Box<[[[[[[Option<i32>; B]; B]; B]; B]; P]; P]>,
+    pub int22_enthalpies: Box<[[[[[[Option<i32>; B]; B]; B]; B]; P]; P]>,
 
-    pub mismatch_hairpin: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_hairpin_enthalpies: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_interior: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_interior_enthalpies: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_interior_1n: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_interior_1n_enthalpies: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_interior_23: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_interior_23_enthalpies: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_multi: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_multi_enthalpies: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_exterior: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-    pub mismatch_exterior_enthalpies: [[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-
-    pub dangle5: [[Option<i32>; Base::COUNT]; PairTypeRNA::COUNT],
-    pub dangle5_enthalpies: [[Option<i32>; Base::COUNT]; PairTypeRNA::COUNT],
-    pub dangle3: [[Option<i32>; Base::COUNT]; PairTypeRNA::COUNT],
-    pub dangle3_enthalpies: [[Option<i32>; Base::COUNT]; PairTypeRNA::COUNT],
-
-    pub int11: Box<[[[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]>,
-    pub int11_enthalpies: Box<[[[[Option<i32>; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]>,
-    pub int21: Box<[[[[[Option<i32>; Base::COUNT]; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]>,
-    pub int21_enthalpies: Box<[[[[[Option<i32>; Base::COUNT]; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]>,
-    pub int22: Box<[[[[[[Option<i32>; Base::COUNT]; Base::COUNT]; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]>,
-    pub int22_enthalpies: Box<[[[[[[Option<i32>; Base::COUNT]; Base::COUNT]; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]>,
-
-    pub hairpin: [Option<i32>; 31],
+    pub hairpin:            [Option<i32>; 31],
     pub hairpin_enthalpies: [Option<i32>; 31],
-    pub bulge: [Option<i32>; 31],
+    pub bulge:            [Option<i32>; 31],
     pub bulge_enthalpies: [Option<i32>; 31],
-    pub interior: [Option<i32>; 31],
+    pub interior:            [Option<i32>; 31],
     pub interior_enthalpies: [Option<i32>; 31],
 
     pub ml_params: [Option<i32>; 6],
@@ -141,33 +155,32 @@ macro_rules! section_match {
 impl EnergyTables {
     pub fn default() -> Self {
         EnergyTables {
-            stack: [[None; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
-            stack_enthalpies: [[None; PairTypeRNA::COUNT]; PairTypeRNA::COUNT],
+            stack:            [[None; P]; P],
+            stack_enthalpies: [[None; P]; P],
 
-            mismatch_hairpin: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_hairpin_enthalpies: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_interior: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_interior_enthalpies: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_interior_1n: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_interior_1n_enthalpies: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_interior_23: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_interior_23_enthalpies: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_multi: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_multi_enthalpies: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_exterior: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
-            mismatch_exterior_enthalpies: [[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT],
+            mismatch_hairpin:            [[[None; B]; B]; P],
+            mismatch_hairpin_enthalpies: [[[None; B]; B]; P],
+            mismatch_interior:            [[[None; B]; B]; P],
+            mismatch_interior_enthalpies: [[[None; B]; B]; P],
+            mismatch_interior_1n:            [[[None; B]; B]; P],
+            mismatch_interior_1n_enthalpies: [[[None; B]; B]; P],
+            mismatch_interior_23:            [[[None; B]; B]; P],
+            mismatch_interior_23_enthalpies: [[[None; B]; B]; P],
+            mismatch_multi:            [[[None; B]; B]; P],
+            mismatch_multi_enthalpies: [[[None; B]; B]; P],
+            mismatch_exterior:            [[[None; B]; B]; P],
+            mismatch_exterior_enthalpies: [[[None; B]; B]; P],
+            dangle5:            [[None; B]; P],
+            dangle5_enthalpies: [[None; B]; P],
+            dangle3:            [[None; B]; P],
+            dangle3_enthalpies: [[None; B]; P],
 
-            dangle5: [[None; Base::COUNT]; PairTypeRNA::COUNT],
-            dangle5_enthalpies: [[None; Base::COUNT]; PairTypeRNA::COUNT],
-            dangle3: [[None; Base::COUNT]; PairTypeRNA::COUNT],
-            dangle3_enthalpies: [[None; Base::COUNT]; PairTypeRNA::COUNT],
-
-            int11: Box::new([[[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]),
-            int11_enthalpies: Box::new([[[[None; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]),
-            int21: Box::new([[[[[None; Base::COUNT]; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]),
-            int21_enthalpies: Box::new([[[[[None; Base::COUNT]; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]),
-            int22: Box::new([[[[[[None; Base::COUNT]; Base::COUNT]; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]),
-            int22_enthalpies: Box::new([[[[[[None; Base::COUNT]; Base::COUNT]; Base::COUNT]; Base::COUNT]; PairTypeRNA::COUNT]; PairTypeRNA::COUNT]),
+            int11:            Box::new([[[[None; B]; B]; P]; P]),
+            int11_enthalpies: Box::new([[[[None; B]; B]; P]; P]),
+            int21:            Box::new([[[[[None; B]; B]; B]; P]; P]),
+            int21_enthalpies: Box::new([[[[[None; B]; B]; B]; P]; P]),
+            int22:            Box::new([[[[[[None; B]; B]; B]; B]; P]; P]),
+            int22_enthalpies: Box::new([[[[[[None; B]; B]; B]; B]; P]; P]),            
 
             hairpin: [None; 31],
             hairpin_enthalpies: [None; 31],
@@ -201,9 +214,16 @@ impl EnergyTables {
                 continue;
             } 
 
-            println!("{:?}", line);
-            if line.starts_with("#") {
-                section = ParamFileSection::try_from(&line[1..]).unwrap();
+            if let Some(rest) = line.strip_prefix("# ") {
+                match ParamFileSection::try_from(rest.trim()) {
+                    Ok(sec) => {
+                        section = sec;
+                    }
+                    Err(_) => {
+                        eprintln!("⚠️  Unknown parameter file section: {:?}", rest);
+                        return Err(ParamError::Parse(rest.to_string()));
+                    }
+                }
                 continue;
             }
 

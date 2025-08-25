@@ -1,3 +1,14 @@
+/// A parser for the parameter file format shipped with ViennaRNA.
+///
+/// IMPORTANT: This module provides the hardcoded indices of parameter entries
+/// as specified in the parsed file! Verify that orders are correct, before
+/// using this parser!!
+///
+/// No error handling implemented. If you got a malformed parameter file, 
+/// it's going to panic through .expect()
+///
+
+/// Importing only EnergyTables and it's indices.
 use crate::energy_tables::{Base, basify};
 use crate::energy_tables::PairTypeRNA;
 use crate::energy_tables::EnergyTables;
@@ -38,7 +49,12 @@ macro_rules! impl_stack_parser {
                     .take(PARAM_FILE_PAIR_ORDER.len())
                     .enumerate()
                 {
-                    let val = token.parse::<i32>().unwrap();
+                    let val = token.parse::<i32>().expect(&format!(
+                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                            stringify!($field),
+                            line,
+                            token
+                    ));
                     let i1 = PARAM_FILE_PAIR_ORDER[self.outer] as usize;
                     let i2 = PARAM_FILE_PAIR_ORDER[inner] as usize;
                     tables.$field[i1][i2] = Some(val);
@@ -65,7 +81,12 @@ macro_rules! impl_mismatch_parser {
                 for (m3, token) in line.split_whitespace()
                     .take(PARAM_FILE_MM_ORDER.len()).enumerate() 
                 {
-                    let val = token.parse::<i32>().unwrap();
+                    let val = token.parse::<i32>().expect(&format!(
+                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                            stringify!($field),
+                            line,
+                            token
+                    ));
                     let i1 = PARAM_FILE_PAIR_ORDER[self.outer] as usize;
                     let i2 = PARAM_FILE_MM_ORDER[self.m5] as usize;
                     let i3 = PARAM_FILE_MM_ORDER[m3] as usize;
@@ -106,7 +127,12 @@ macro_rules! impl_dangle_parser {
                 for (m5, token) in line.split_whitespace()
                     .take(PARAM_FILE_MM_ORDER.len()).enumerate() 
                 {
-                    let val = token.parse::<i32>().unwrap();
+                    let val = token.parse::<i32>().expect(&format!(
+                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                            stringify!($field),
+                            line,
+                            token
+                    ));
                     let i1 = PARAM_FILE_PAIR_ORDER[self.outer] as usize;
                     let i2 = PARAM_FILE_MM_ORDER[m5] as usize;
                     tables.$field[i1][i2] = Some(val);
@@ -136,7 +162,12 @@ macro_rules! impl_int11_parser {
                 for (mm3, token) in line.split_whitespace()
                     .take(PARAM_FILE_MM_ORDER.len()).enumerate() 
                 {
-                    let val = token.parse::<i32>().unwrap();
+                    let val = token.parse::<i32>().expect(&format!(
+                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                            stringify!($field),
+                            line,
+                            token
+                    ));
                     let i1 = PARAM_FILE_PAIR_ORDER[self.outer] as usize;
                     let i2 = PARAM_FILE_PAIR_ORDER[self.inner] as usize;
                     let i3 = PARAM_FILE_MM_ORDER[self.mm5] as usize;
@@ -176,7 +207,12 @@ macro_rules! impl_int21_parser {
                 for (mm3, token) in line.split_whitespace()
                     .take(PARAM_FILE_MM_ORDER.len()).enumerate() 
                 {
-                    let val = token.parse::<i32>().unwrap();
+                    let val = token.parse::<i32>().expect(&format!(
+                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                            stringify!($field),
+                            line,
+                            token
+                    ));
                     let i1 = PARAM_FILE_PAIR_ORDER[self.outer] as usize;
                     let i2 = PARAM_FILE_PAIR_ORDER[self.inner] as usize;
                     let i3 = PARAM_FILE_MM_ORDER[self.mm55] as usize;
@@ -221,7 +257,12 @@ macro_rules! impl_int22_parser {
                 for (mm33, token) in line.split_whitespace()
                     .take(PARAM_FILE_MM_ORDER.len()).enumerate() 
                 {
-                    let val = token.parse::<i32>().unwrap();
+                    let val = token.parse::<i32>().expect(&format!(
+                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                            stringify!($field),
+                            line,
+                            token
+                    ));
                     let i1 = PARAM_FILE_PAIR_ORDER[self.outer] as usize;
                     let i2 = PARAM_FILE_PAIR_ORDER[self.inner] as usize;
                     let i3 = PARAM_FILE_MM_ORDER[self.mm55] as usize;
@@ -270,7 +311,9 @@ macro_rules! impl_loop_parser {
                     let val = if token == "INF" {
                         None
                     } else {
-                        Some(token.parse::<i32>().unwrap())
+                        Some(token.parse::<i32>().expect(&format!(
+                                    "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                                    stringify!($field), line, token)))
                     };
                     tables.$field[self.base+idx] = val;
                     idx += 1;
@@ -298,12 +341,20 @@ macro_rules! impl_sequence_parser {
 
         impl SectionParser for $struct_name {
             fn parse_line(&mut self, line: &str, tables: &mut EnergyTables) {
-                println!("{:?}", line);
                 let mut parts = line.split_whitespace();
                 if let (Some(seq), Some(g), Some(h)) = (parts.next(), parts.next(), parts.next()) {
-                    let g = g.parse::<i32>().unwrap();
-                    let h = h.parse::<i32>().unwrap();
-                    println!("{:?}", seq);
+                    let g = g.parse::<i32>().expect(&format!(
+                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                            stringify!($field),
+                            line,
+                            g
+                    ));
+                    let h = h.parse::<i32>().expect(&format!(
+                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                            stringify!($field),
+                            line,
+                            h
+                    ));
                     tables.$field.insert(basify(seq), (g, h));
                 }
             }
@@ -400,9 +451,9 @@ impl TryFrom<&str> for ParamFileSection {
             "bulge_enthalpies", BulgeEnthalpies,
             "interior", Interior,
             "interior_enthalpies", InteriorEnthalpies,
-            "ml_params", MLParams,
-            "ninio", Ninio,
-            "misc", Misc,
+            "ML_params", MLParams,
+            "NINIO", Ninio,
+            "Misc", Misc,
             "Hexaloops", HairpinSequences,
             "Tetraloops", HairpinSequences,
             "Triloops", HairpinSequences,

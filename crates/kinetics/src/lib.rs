@@ -1,7 +1,8 @@
 #![allow(dead_code)]
-pub mod utils;
+pub mod parameter_parsing;
 pub mod energy_tables;
-pub mod vrna_parsing;
+pub mod utils;
+
 mod energy_model;
 mod loop_structure;
 mod loop_decomposition;
