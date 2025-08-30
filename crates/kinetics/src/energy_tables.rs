@@ -83,6 +83,20 @@ pub fn pair_type(b5: Base, b3: Base) -> PairTypeRNA {
     PAIR_LOOKUP[b5 as usize][b3 as usize]
 }
 
+pub fn rev_pair_type(pt: &PairTypeRNA) -> PairTypeRNA {
+    use PairTypeRNA::*;
+    match pt {
+        AU => UA,
+        UA => AU,
+        CG => GC,
+        GC => CG,
+        GU => UG,
+        UG => GU,
+        NN => NN,
+    }
+}
+
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumCount)]
 pub enum PairTypeRNA {
     AU,

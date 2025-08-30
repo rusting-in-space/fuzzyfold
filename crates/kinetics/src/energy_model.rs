@@ -1,6 +1,7 @@
 
 use std::path::Path;
 
+use crate::energy_tables::PairTypeRNA;
 use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use structure::PairTable;
@@ -15,7 +16,22 @@ pub struct ViennaRNA {
     temperature: f64,
     min_hp_size: usize,
     lxc37: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
-    energy_tables: EnergyTables,
+    pub energy_tables: EnergyTables,
+
+    // dcal/mol
+    g37_initiation: i32,
+    h_initiation: i32,
+    g37_ru_end: i32,
+    h_ru_end: i32,
+    g37_symmetry: i32,
+    h_symmetry: i32,
+
+    pub g37_coaxial_mm_discontious: i32,
+    pub h_coaxial_mm_discontious: i32,
+    pub g37_coaxial_mm_wcf_bonus: i32,
+    pub h_coaxial_mm_wcf_bonus: i32,
+    pub g37_coaxial_mm_gu_bonus: i32,
+    pub h_coaxial_mm_gu_bonus: i32,
 
     dangles: u8,
 }
@@ -28,6 +44,20 @@ impl ViennaRNA {
             min_hp_size: 3,
             lxc37: 107.856, //TODO
             energy_tables,
+
+
+            g37_initiation: 409, // +/- 0.22
+            h_initiation: 361, // +/- 4.12
+            g37_ru_end: 45, // +/- 0.04
+            h_ru_end: 372, // +/- 0.83
+            g37_symmetry: 43,
+            h_symmetry: 0,
+            g37_coaxial_mm_discontious: -210,
+            h_coaxial_mm_discontious: -846, // +/- 2.75
+            g37_coaxial_mm_wcf_bonus: -40,
+            h_coaxial_mm_wcf_bonus: -40,
+            g37_coaxial_mm_gu_bonus: -20,
+            h_coaxial_mm_gu_bonus: -20,
 
             dangles: 0,
         })
@@ -61,6 +91,7 @@ impl ViennaRNA {
         Ok(energy)
     }
 
+    /// g37 = g37 AU end-penalty + sum(37-stacking)
     fn interior(&self, fwdseq: &[Base], revseq: &[Base]) -> i32 {
         if fwdseq.len() == 2 && revseq.len() == 2 {
            return self.energy_tables.stack[
@@ -105,7 +136,6 @@ impl ViennaRNA {
                .unwrap(); 
         } 
 
-
         let n1 = fwdseq.len() - 2;
         let n2 = revseq.len() - 2;
         let a = -200.0; // 1.0 kcal/mol
@@ -125,13 +155,19 @@ impl ViennaRNA {
         energy.round() as i32
     }
 
-    fn exterior(&self, segments: &[&[Base]]) -> i32 {
-        if self.dangles == 0 || segments.len() == 0 {
-            0 
+    fn closing_penalty(&self, pt: PairTypeRNA) -> i32 {
+        if matches!(pt, PairTypeRNA::AU | PairTypeRNA::UA | PairTypeRNA::GU | PairTypeRNA::UG) {
+            self.g37_ru_end
         } else {
-            segments.iter().map(|s| if s.len() - 2 > 0 { -50i32 } else { 0i32 }).sum::<i32>()
-        } 
+            0
+        }
     }
+
+    fn exterior(&self, segments: &[&[Base]]) -> i32 {
+        todo!("");
+    }
+
+
 }
 
 pub trait EnergyModel {
@@ -247,12 +283,88 @@ impl EnergyModel for ViennaRNA {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::energy_tables::basify;
 
     #[test]
+    fn test_exterior_single_branch() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -120);
+
+        let seg1 = &basify("UG");
+        let seg2 = &basify("CU");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -120); 
+
+        let seg1 = &basify("G");
+        let seg2 = &basify("CU");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -120);
+ 
+        let seg1 = &basify("UG");
+        let seg2 = &basify("C");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, 0); 
+    }
+
+    #[test]
+    fn test_exterior_two_branches() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUG");
+        let seg3 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -330);
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUUG");
+        let seg3 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -240);
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUUG");
+        let seg3 = &basify("C");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -120);
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CG");
+        let seg3 = &basify("CU");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -330);
+
+        //TODO Check parameter result!!!
+        let seg1 = &basify("ACA");
+        let seg2 = &basify("UGG");
+        let seg3 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        //assert_eq!(energy, -330);
+    }
+
+    #[test]
+    fn test_exterior_three_branches() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUG");
+        let seg3 = &basify("CUG");
+        let seg4 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3, seg4]);
+        assert_eq!(energy, -33);
+    }
+
     fn test_basic_stuff() {
         let sequence = "GCAUACGAUCA";
         let struct_1 = ".(....)....";
@@ -270,8 +382,6 @@ mod tests {
         println!("Pair energy: {}", energy);
     }
 
-
-    #[test]
     fn test_fake_model() {
         let sequence = "GCAUCCCCGAAAAUUG";
         let pairings = ".((.(...)(...)))";
