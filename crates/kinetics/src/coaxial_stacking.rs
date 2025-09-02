@@ -77,32 +77,32 @@ fn set_coax_energy(
 ) {
     if let Some(&m) = mm {
         coax_energy.set(i, i + 1, 1, 0, 
-            d5.map_or(i32::MAX/2, |b| {
-                let bonus = if matches!(pair_type(*b, m), 
+            d5.map_or(i32::MAX/2, |&b| {
+                let bonus = if matches!(pair_type(b, m), 
                     PairTypeRNA::GU | PairTypeRNA::UG) {
                     -20
-                } else if model.can_pair(*b, m) {
+                } else if model.can_pair(b, m) {
                     -40
                 } else {
                     0
                 };
                 model.energy_tables.mismatch_exterior
-                    [pi as usize][*b as usize][m as usize].unwrap()
+                    [pi as usize][b as usize][m as usize].unwrap()
                     + model.g37_coaxial_mm_discontious
                         + bonus
             }));
         coax_energy.set(i, i + 1, 0, 1, 
-            d3.map_or(i32::MAX/2, |b| {
-                let bonus = if matches!(pair_type(m, *b), 
+            d3.map_or(i32::MAX/2, |&b| {
+                let bonus = if matches!(pair_type(m, b), 
                     PairTypeRNA::GU | PairTypeRNA::UG) {
                     -20
-                } else if model.can_pair(m, *b) {
+                } else if model.can_pair(m, b) {
                     -40
                 } else {
                     0
                 };
                 model.energy_tables.mismatch_exterior
-                    [pi as usize][m as usize][*b as usize].unwrap()
+                    [pi as usize][m as usize][b as usize].unwrap()
                     + model.g37_coaxial_mm_discontious
                         + bonus
             }));
@@ -114,7 +114,70 @@ fn set_coax_energy(
     }
 }
 
-
+fn get_mfe(
+    min_energy: &mut DPTable, 
+    coax_energy: &mut DPTable, 
+    ilen: usize, 
+    i: usize, 
+    jlen: usize, 
+    j: usize
+) {
+    if jlen >= 2 {
+        for &(d5, d3) in &[(0usize, 0usize), (0, 1), (1, 0), (1, 1)] {
+            let best = (min_energy.get(i, j - 1, d5, 1) + min_energy.get(j, j, 1, d3))
+                   .min(min_energy.get(i, j - 1, d5, 1) + min_energy.get(j, j, 0, d3))
+                   .min(min_energy.get(i, j - 1, d5, 0) + min_energy.get(j, j, 1, d3))
+                   .min(min_energy.get(i, j - 1, d5, 0) + min_energy.get(j, j, 0, d3));
+            min_energy.set(i, j, d5, d3, best);
+        }
+    } else if jlen == 1 {
+        for &(d5, d3) in &[(0usize, 0usize), (0, 1), (1, 0), (1, 1)] {
+            let mut best = (min_energy.get(i, j - 1, d5, 1) + min_energy.get(j, j, 0, d3))
+                   .min(min_energy.get(i, j - 1, d5, 0) + min_energy.get(j, j, 1, d3))
+                   .min(min_energy.get(i, j - 1, d5, 0) + min_energy.get(j, j, 0, d3));
+            if j == i + 1 {
+                best = best.min(coax_energy.get(i, j, d5, d3));
+            } else if ilen >= 2 {
+                best = best
+                    .min(min_energy.get(i, j - 2, d5, 1) + coax_energy.get(j-1, j, 1, d3))
+                    .min(min_energy.get(i, j - 2, d5, 1) + coax_energy.get(j-1, j, 0, d3))
+                    .min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 1, d3))
+                    .min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 0, d3));
+            } else if ilen == 1 {
+                best = best
+                    .min(min_energy.get(i, j - 2, d5, 1) + coax_energy.get(j-1, j, 0, d3))
+                    .min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 1, d3))
+                    .min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 0, d3));
+            } else if ilen == 0 {
+                best = best.min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 0, d3));
+            }
+            min_energy.set(i, j, d5, d3, best);
+        }
+    } else if jlen == 0 {
+        for &(d5, d3) in &[(0usize, 0usize), (0, 1), (1, 0), (1, 1)] {
+            let mut best = min_energy.get(i, j - 1, d5, 0) + min_energy.get(j, j, 0, d3);
+            if j == i + 1 {
+                best = best.min(coax_energy.get(i, j, d5, d3));
+            } else {
+                if ilen >= 2 {
+                    best = best
+                        .min(min_energy.get(i, j - 2, d5, 1) + coax_energy.get(j-1, j, 1, d3))
+                        .min(min_energy.get(i, j - 2, d5, 1) + coax_energy.get(j-1, j, 0, d3))
+                        .min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 1, d3))
+                        .min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 0, d3));
+                } else if ilen == 1 {
+                    best = best
+                        .min(min_energy.get(i, j - 2, d5, 1) + coax_energy.get(j-1, j, 0, d3))
+                        .min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 1, d3))
+                        .min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 0, d3));
+                } else if ilen == 0 {
+                    best = best.min(min_energy.get(i, j - 2, d5, 0) + coax_energy.get(j-1, j, 0, d3));
+                }
+            }
+            min_energy.set(i, j, d5, d3, best);
+        }
+    }
+}
 
 impl fmt::Debug for DPTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -156,7 +219,7 @@ impl<'a> CoaxialStackingDP<'a> {
         let etables = &model.energy_tables;
         let mut branching_pairs = Vec::with_capacity(n);
         let mut min_energy = DPTable::new(n);
-        let mut coax_energy = DPTable::new(n+1); //TODO
+        let mut coax_energy = DPTable::new(n);
         for i in 0..n {
             let j = (i + 1) % n; 
             let pair = pair_type(*segments[i].last().unwrap(), segments[j][0]);
@@ -174,8 +237,38 @@ impl<'a> CoaxialStackingDP<'a> {
                 println!("cs {j} {j2} {:?}", npair);
                 set_coax_energy(&mut coax_energy, i, d5, pair, mm, npair, d3, model);
             }
+            // We now have E_i and S_ij.
+            // So we could calculate E_0..i!
         }
-        println!("done");
+
+        for i in 0..=1 {
+            for j in i+1..n {
+                get_mfe(&mut min_energy, &mut coax_energy, 
+                        segments[i].len() - 2, i, 
+                        segments[j].len() - 2, j);
+            }
+        }
+
+        let ilen = segments[n-1].len();
+        let jlen = segments[0].len();
+
+        if jlen >= 2 {
+                min_energy.get(0, n - 1, 1, 1)
+                    .min(min_energy.get(0, n - 1, 1, 0))
+                    .min(min_energy.get(0, n - 1, 0, 1))
+                    .min(min_energy.get(0, n - 1, 0, 0))
+        } else if jlen == 1 && ilen >= 2 {
+                assert!(min_energy.get(0, n - 1, 1, 1) > i32::MAX/4); 
+                min_energy.get(0, n - 1, 1, 1)
+                    .min(min_energy.get(0, n - 1, 1, 0))
+                    .min(min_energy.get(0, n - 1, 0, 1))
+                    .min(min_energy.get(0, n - 1, 0, 0))
+                    .min(min_energy.get(1, n - 2, 1, 1) + coax_energy.get(n-1, 0, 1, 1))
+                    .min(min_energy.get(1, n - 2, 1, 1) + coax_energy.get(n-1, 0, 0, 1))
+                    .min(min_energy.get(1, n - 2, 1, 0) + coax_energy.get(n-1, 0, 1, 1))
+                    .min(min_energy.get(1, n - 2, 1, 0) + coax_energy.get(n-1, 0, 0, 1));
+        }
+        //println!("done");
 
         CoaxialStackingDP {
             segments,
@@ -191,21 +284,31 @@ impl<'a> CoaxialStackingDP<'a> {
         let n = self.branching_pairs.len();
                 println!("{:?}", self.min_energy);
                 println!("{:?}", self.coax_energy);
-        for len in 2..=n {
-            for i in 0..=n - len {
-                let j = i + len - 1;
-                for d5 in 0..=1 {
-                    for d3 in 0..=1 {
-                        println!("i={} j={} d5={} d3={}", i, j, d5, d3);
-                        let val = self.update_e(i, j, d5, d3);
-                        println!("val={}", val);
-                        self.min_energy.set(i, j, d5, d3, val);
-                    }
+        for j in 1..n {
+            for d5 in 0..=1 {
+                for d3 in 0..=1 {
+                    println!("i={} j={} d5={} d3={}", 0, j, d5, d3);
+                    let val = self.update_e(0, j, d5, d3);
+                    println!("val={}", val);
+                    self.min_energy.set(0, j, d5, d3, val);
                 }
-                println!("{:?}", self.min_energy);
-                println!("{:?}", self.coax_energy);
             }
         }
+        //for len in 2..=n {
+        //    for i in 0..=n - len {
+        //        let j = i + len - 1;
+        //        for d5 in 0..=1 {
+        //            for d3 in 0..=1 {
+        //                println!("i={} j={} d5={} d3={}", i, j, d5, d3);
+        //                let val = self.update_e(i, j, d5, d3);
+        //                println!("val={}", val);
+        //                self.min_energy.set(i, j, d5, d3, val);
+        //            }
+        //        }
+        //        println!("{:?}", self.min_energy);
+        //        println!("{:?}", self.coax_energy);
+        //    }
+        //}
         self.result()
     }
 
