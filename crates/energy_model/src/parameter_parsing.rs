@@ -9,9 +9,9 @@
 ///
 
 /// Importing only EnergyTables and it's indices.
-use crate::energy_tables::{Base, basify};
-use crate::energy_tables::PairTypeRNA;
-use crate::energy_tables::EnergyTables;
+use crate::{Base, basify};
+use crate::PairTypeRNA;
+use crate::EnergyTables;
 
 const PARAM_FILE_PAIR_ORDER: [PairTypeRNA; 7] = [
     PairTypeRNA::CG,

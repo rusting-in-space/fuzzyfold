@@ -6,6 +6,5 @@ edition = "2024"
 [dependencies]
 nohash-hasher = "0.2.0"
 rustc-hash = "2.1.1"
-strum = "0.27.2"
-strum_macros = "0.27.2"
 structure = { path = "../structure" }
+energy_model = { path = "../energy_model" }

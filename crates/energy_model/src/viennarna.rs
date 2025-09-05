@@ -1,0 +1,703 @@
+use core::f64;
+use std::i32;
+use std::path::Path;
+use structure::PairTable;
+
+use crate::NearestNeighborLoop;
+use crate::LoopDecomposition;
+use crate::Base;
+use crate::PairTypeRNA;
+use crate::pair_type;
+use crate::EnergyTables;
+use crate::ParamError;
+use crate::EnergyModel;
+
+fn rescale_energy_to_temp(enth: i32, en37: i32, temp_c: f64) -> i32 {
+    let t_ref = 310.15; // 37 °C in Kelvin
+    let t = temp_c + 273.15;
+    let dtemp = t / t_ref;
+
+    let enth = enth as f64;
+    let en37 = en37 as f64;
+
+    let dg = enth * (1.0 - dtemp) + en37 * dtemp;
+    //dg.round() as i32
+    dg as i32 // No rounding for ViennaRNA compatibility
+}
+
+
+/// WIP: The default ViennaRNA-v2.6 energy model.
+#[derive(Debug)]
+pub struct ViennaRNA {
+    temperature: f64,
+    min_hp_size: usize,
+
+    lxc37: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
+
+    pub energy_tables: EnergyTables,
+
+    // dcal/mol
+    pub g37_initiation: i32,
+    pub h_initiation: i32,
+    pub g37_ru_end: i32,
+    pub h_ru_end: i32,
+    pub g37_symmetry: i32,
+    pub h_symmetry: i32,
+
+    pub g37_coaxial_mm_discontious: i32,
+    pub h_coaxial_mm_discontious: i32,
+    pub g37_coaxial_mm_wcf_bonus: i32,
+    pub h_coaxial_mm_wcf_bonus: i32,
+    pub g37_coaxial_mm_gu_bonus: i32,
+    pub h_coaxial_mm_gu_bonus: i32,
+}
+
+impl ViennaRNA {
+    pub fn from_parameter_file<P: AsRef<Path>>(path: P) -> Result<Self, ParamError> {
+        let energy_tables = EnergyTables::from_parameter_file(path)?;
+        Ok(ViennaRNA {
+            temperature: 37.0,
+            min_hp_size: 3,
+            lxc37: 107.856, //TODO
+            energy_tables,
+
+            g37_initiation: 409, // +/- 0.22
+            h_initiation: 361, // +/- 4.12
+            g37_ru_end: 50, // NOTE: WRONG
+            //g37_ru_end: 45, // +/- 0.04
+            h_ru_end: 372, // +/- 0.83
+            g37_symmetry: 43,
+            h_symmetry: 0,
+            g37_coaxial_mm_discontious: -210,
+            h_coaxial_mm_discontious: -846, // +/- 2.75
+            g37_coaxial_mm_wcf_bonus: -40,
+            h_coaxial_mm_wcf_bonus: -40,
+            g37_coaxial_mm_gu_bonus: -20,
+            h_coaxial_mm_gu_bonus: -20,
+        })
+    }
+
+    fn hairpin(&self, seq: &[Base]) -> Result<i32, ParamError> {
+        let n = seq.len() - 2;
+        if n < self.min_hp_size {
+            return Err(ParamError::InvalidHairpinSize(n));
+        }
+
+        // Special hairpin energies
+        if seq.len() <= 6 { 
+            if let Some((en37, enth)) = self.energy_tables.hairpin_sequences.get(seq).copied() {
+                if self.temperature == 37.0 { 
+                    return Ok(en37);
+                } else {
+                    return Ok(rescale_energy_to_temp(enth, en37, self.temperature))
+                }
+            }
+        }
+
+        // Initiation terms
+        let (mut en37, mut enth) = if n <= 30 {
+            (self.energy_tables.hairpin[n].ok_or(ParamError::MissingValue("hairpin", n))?,
+            self.energy_tables.hairpin_enthalpies[n].ok_or(ParamError::MissingValue("hairpin", n))?)
+        } else {
+            (self.energy_tables.hairpin[30].ok_or(ParamError::MissingValue("hairpin", 30))?
+                + (self.lxc37 * (n as f64).ln() / 30.) as i32,
+             self.energy_tables.hairpin_enthalpies[30].ok_or(ParamError::MissingValue("hairpin", 30))?
+                + (self.lxc37 * (n as f64).ln() / 30.) as i32)
+        };
+
+        // NOTE: double check NN desrciption if this is indeed the correct way.
+        if n == 3 && matches!(pair_type(seq[0], *seq.last().unwrap())
+            , PairTypeRNA::GU | PairTypeRNA::UG 
+            | PairTypeRNA::AU | PairTypeRNA::UA
+            | PairTypeRNA::NN
+        ) { 
+            en37 += self.g37_ru_end;
+            enth += self.h_ru_end;
+        } else if n > 3 {
+            en37 += self.energy_tables.mismatch_hairpin[
+                pair_type(seq[0], seq[n+1]) as usize][ 
+                    seq[1] as usize][
+                    seq[n] as usize
+                    ].ok_or(ParamError::MissingValue("mismatch_hairpin", n))?;
+
+            enth += self.energy_tables.mismatch_hairpin_enthalpies[
+                pair_type(seq[0], seq[n+1]) as usize][ 
+                    seq[1] as usize][
+                    seq[n] as usize
+                    ].ok_or(ParamError::MissingValue("mismatch_hairpin", n))?;
+        }
+
+        if self.temperature == 37.0 { 
+            Ok(en37)
+        } else {
+            Ok(rescale_energy_to_temp(enth, en37, self.temperature))
+        }
+    }
+
+    /// g37 = g37 AU end-penalty + sum(37-stacking)
+    fn interior(&self, fwdseq: &[Base], revseq: &[Base]) -> i32 {
+        let (en37, enth) =
+        if fwdseq.len() == 2 && revseq.len() == 2 {
+            (self.energy_tables.stack[
+               pair_type(fwdseq[0], revseq[1]) as usize][
+               pair_type(revseq[0], fwdseq[1]) as usize].expect("from file"),
+            self.energy_tables.stack_enthalpies[
+               pair_type(fwdseq[0], revseq[1]) as usize][
+               pair_type(revseq[0], fwdseq[1]) as usize].expect("from file"))
+        } else if fwdseq.len() == 3 && revseq.len() == 3 {
+            // 1-1 interior loop
+            (self.energy_tables.int11
+                [pair_type(fwdseq[0], revseq[2]) as usize]
+                [pair_type(revseq[0], fwdseq[2]) as usize]
+                [fwdseq[1] as usize]
+                [revseq[1] as usize].expect("from file"),
+            self.energy_tables.int11_enthalpies
+                [pair_type(fwdseq[0], revseq[2]) as usize]
+                [pair_type(revseq[0], fwdseq[2]) as usize]
+                [fwdseq[1] as usize]
+                [revseq[1] as usize].expect("from file"))
+        } else if fwdseq.len() == 4 && revseq.len() == 3 {
+            (self.energy_tables.int21
+               [pair_type(fwdseq[0], revseq[2]) as usize]
+               [pair_type(revseq[0], fwdseq[3]) as usize]
+               [fwdseq[1] as usize]
+               [fwdseq[2] as usize]
+               [revseq[1] as usize].expect("from file"),
+            self.energy_tables.int21_enthalpies
+               [pair_type(fwdseq[0], revseq[2]) as usize]
+               [pair_type(revseq[0], fwdseq[3]) as usize]
+               [fwdseq[1] as usize]
+               [fwdseq[2] as usize]
+               [revseq[1] as usize].expect("from file"))
+        } else if fwdseq.len() == 3 && revseq.len() == 4 {
+            (self.energy_tables.int21
+               [pair_type(revseq[0], fwdseq[2]) as usize]
+               [pair_type(fwdseq[0], revseq[3]) as usize]
+               [revseq[1] as usize]
+               [revseq[2] as usize]
+               [fwdseq[1] as usize].expect("from file"),
+            self.energy_tables.int21_enthalpies
+               [pair_type(revseq[0], fwdseq[2]) as usize]
+               [pair_type(fwdseq[0], revseq[3]) as usize]
+               [revseq[1] as usize]
+               [revseq[2] as usize]
+               [fwdseq[1] as usize].expect("from file"))
+        } else if fwdseq.len() == 4 && revseq.len() == 4 {
+            (self.energy_tables.int22
+               [pair_type(revseq[0], fwdseq[1]) as usize]
+               [pair_type(fwdseq[0], revseq[2]) as usize]
+               [fwdseq[1] as usize]
+               [fwdseq[2] as usize]
+               [revseq[1] as usize]
+               [revseq[2] as usize].expect("from file"),
+            self.energy_tables.int22_enthalpies
+               [pair_type(revseq[0], fwdseq[1]) as usize]
+               [pair_type(fwdseq[0], revseq[2]) as usize]
+               [fwdseq[1] as usize]
+               [fwdseq[2] as usize]
+               [revseq[1] as usize]
+               [revseq[2] as usize].expect("from file"))
+        } else if fwdseq.len() == 3 && revseq.len() == 2 {
+            // SpecialC if C adjacent to paired C missing!
+            // Initiation terms
+            (self.energy_tables.bulge[1].unwrap() 
+             + self.energy_tables.stack[
+             pair_type(fwdseq[0], revseq[1]) as usize][
+             pair_type(revseq[0], fwdseq[2]) as usize]
+             .expect("from file")
+             ,self.energy_tables.bulge_enthalpies[1].unwrap()
+             + self.energy_tables.stack_enthalpies[
+             pair_type(fwdseq[0], revseq[1]) as usize][
+             pair_type(revseq[0], fwdseq[2]) as usize]
+             .expect("from file"))
+        } else if fwdseq.len() == 2 && revseq.len() == 3 {
+            (self.energy_tables.bulge[1].unwrap() 
+             + self.energy_tables.stack[
+             pair_type(fwdseq[0], revseq[2]) as usize][
+             pair_type(revseq[0], fwdseq[1]) as usize]
+             .expect("from file")
+             ,self.energy_tables.bulge_enthalpies[1].unwrap()
+             + self.energy_tables.stack_enthalpies[
+             pair_type(fwdseq[0], revseq[2]) as usize][
+             pair_type(revseq[0], fwdseq[1]) as usize]
+             .expect("from file"))
+        } else if fwdseq.len() > 3 && revseq.len() == 2 {
+            let (pg1, th1) = if matches!(pair_type(fwdseq[0], revseq[1])
+                , PairTypeRNA::GU | PairTypeRNA::UG 
+                | PairTypeRNA::AU | PairTypeRNA::UA
+                | PairTypeRNA::NN
+            ) { 
+                (self.g37_ru_end, self.h_ru_end)
+            } else { (0, 0) };
+            let (pg2, th2) = if matches!(pair_type(*fwdseq.last().unwrap(), revseq[0])
+                , PairTypeRNA::GU | PairTypeRNA::UG 
+                | PairTypeRNA::AU | PairTypeRNA::UA
+                | PairTypeRNA::NN
+            ) { 
+                (self.g37_ru_end, self.h_ru_end)
+            } else { (0, 0) };
+
+            let n = fwdseq.len() - 2;
+            if n <= 30 {
+                (self.energy_tables.bulge[n].unwrap() + pg1 + pg2,
+                self.energy_tables.bulge_enthalpies[n].unwrap() + th1 + th2)
+            } else {
+                (self.energy_tables.hairpin[30].unwrap() + pg1 + pg2
+                 + (self.lxc37 * (n as f64).ln() / 30.) as i32,
+                 self.energy_tables.hairpin_enthalpies[30].unwrap() + th1 + th2
+                 + (self.lxc37 * (n as f64).ln() / 30.) as i32)
+            }
+        } else if fwdseq.len() == 2 && revseq.len() > 3 {
+            let (pg1, th1) = if matches!(pair_type(fwdseq[0], *revseq.last().unwrap())
+                , PairTypeRNA::GU | PairTypeRNA::UG 
+                | PairTypeRNA::AU | PairTypeRNA::UA
+                | PairTypeRNA::NN
+            ) { 
+                (self.g37_ru_end, self.h_ru_end)
+            } else { (0, 0) };
+            let (pg2, th2) = if matches!(pair_type(fwdseq[1], revseq[0])
+                , PairTypeRNA::GU | PairTypeRNA::UG 
+                | PairTypeRNA::AU | PairTypeRNA::UA
+                | PairTypeRNA::NN
+            ) { 
+                (self.g37_ru_end, self.h_ru_end)
+            } else { (0, 0) };
+
+            let n = revseq.len() - 2;
+            if n <= 30 {
+                (self.energy_tables.bulge[n].unwrap() + pg1 + pg2,
+                self.energy_tables.bulge_enthalpies[n].unwrap() + th1 + th2)
+            } else {
+                (self.energy_tables.hairpin[30].unwrap() + pg1 + pg2
+                 + (self.lxc37 * (n as f64).ln() / 30.) as i32,
+                 self.energy_tables.hairpin_enthalpies[30].unwrap() + th1 + th2
+                 + (self.lxc37 * (n as f64).ln() / 30.) as i32)
+            }
+        } else {
+            (0, 0)
+        }; 
+
+        if self.temperature == 37.0 { 
+            en37
+        } else {
+            rescale_energy_to_temp(enth, en37, self.temperature)
+        }
+    }
+
+    fn multibranch(&self, segments: &[&[Base]]) -> i32 {
+        let branches = segments.len();
+        let unpaired: usize = segments.iter().map(|s| s.len() - 2).sum();
+        let a = 340.0; // 3.4 kcal/mol = 34 dcal
+        let b =  40.0; // 0.4 kcal/mol = 4 dcal
+        let c =  10.0; // 0.1 kcal/mol = 1 dcal
+        let energy = a + b * (branches as f64) + c * (unpaired as f64);
+        energy.round() as i32
+    }
+
+    fn exterior(&self, segments: &[&[Base]]) -> i32 {
+        let mut en37 = 0;
+        let mut enth = 0;
+        let n = segments.len() - 1; 
+        for i in 0..n {
+            let j = i + 1; 
+            let pair = pair_type(*segments[i].last().unwrap(), segments[j][0]);
+            if matches!(pair
+                , PairTypeRNA::GU | PairTypeRNA::UG 
+                | PairTypeRNA::AU | PairTypeRNA::UA
+                | PairTypeRNA::NN
+            ) { 
+                en37 += self.g37_ru_end;
+                enth += self.h_ru_end;
+            }
+
+            let d5 = segments.get(i)
+                .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(d)));
+            let d3 = segments.get(j)
+                .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(1)));
+
+            //NOTE: This does not take the minimum over all options, it always
+            // prefers terminal mismatch over single dangling.
+            let (g, h) = match (d5, d3) { 
+                (Some(&b5), Some(&b3)) => 
+                    (self.energy_tables.mismatch_exterior[pair as usize][b5 as usize][b3 as usize].unwrap(),
+                     self.energy_tables.mismatch_exterior_enthalpies[pair as usize][b5 as usize][b3 as usize].unwrap()),
+                (Some(&b5), None) => 
+                    (self.energy_tables.dangle5[pair as usize][b5 as usize].unwrap(),
+                     self.energy_tables.dangle5_enthalpies[pair as usize][b5 as usize].unwrap()),
+                (None, Some(&b3)) => 
+                    (self.energy_tables.dangle3[pair as usize][b3 as usize].unwrap(),
+                     self.energy_tables.dangle3_enthalpies[pair as usize][b3 as usize].unwrap()),
+                _ => (0, 0),
+            };
+            en37 += g;
+            enth += h;
+        }
+        if self.temperature == 37.0 { 
+            en37
+        } else {
+            rescale_energy_to_temp(enth, en37, self.temperature)
+        }
+    }
+
+}
+
+impl EnergyModel for ViennaRNA {
+
+    fn can_pair(&self, b1: Base, b2: Base) -> bool {
+        matches!((b1, b2),
+        (Base::A, Base::U) | (Base::U, Base::A) |
+        (Base::G, Base::C) | (Base::C, Base::G) |
+        (Base::G, Base::U) | (Base::U, Base::G))
+    }
+
+    fn min_hairpin_size(&self) -> usize { self.min_hp_size }
+
+    fn energy_of_structure<T: LoopDecomposition>(&self, 
+        sequence: &[Base], 
+        structure: &T
+    ) -> i32  {
+        let mut total = 0;
+        structure.for_each_loop(|l| {
+            total += self.energy_of_loop(sequence, l);
+        });
+        total
+    }
+
+    fn energy_of_pair(&self, 
+        sequence: &[Base], 
+        structure: &PairTable, 
+        i: usize,
+        j: usize
+    ) -> i32 {
+        let inner = structure.loop_enclosed_by(Some((i, j)));
+        let epair = structure.get_enclosing_pair(i, j);
+
+        if let (Some(pi), Some(pj)) = (structure[i], structure[j]) {
+            assert!(j == pi && i == pj);
+            let outer = structure.loop_enclosed_by(epair);
+            let mut pt = structure.clone();
+            pt[i] = None;
+            pt[j] = None;
+            let combo = pt.loop_enclosed_by(epair);
+
+            let en_paired = self.energy_of_loop(sequence, &inner) + self.energy_of_loop(sequence, &outer);
+            let en_absent = self.energy_of_loop(sequence, &combo);
+            return en_absent - en_paired
+        } else {
+            assert!(structure[i] == structure[j]);
+            let combo = structure.loop_enclosed_by(epair);
+            let mut pt = structure.clone();
+            pt[i] = Some(j);
+            pt[j] = Some(i);
+            let outer = pt.loop_enclosed_by(epair);
+            let en_paired = self.energy_of_loop(sequence, &inner) + self.energy_of_loop(sequence, &outer);
+            let en_absent = self.energy_of_loop(sequence, &combo);
+            return en_paired - en_absent 
+        }
+    }
+
+    fn energy_of_loop(&self, sequence: &[Base], nn_loop: &NearestNeighborLoop) -> i32 {
+
+        match nn_loop {
+            NearestNeighborLoop::Hairpin { closing: (i, j) } => {
+                self.hairpin(&sequence[*i..=*j]).unwrap()
+            }
+            NearestNeighborLoop::Interior { closing: (i, j), inner: (k, l) } => {
+                let left = &sequence[*i..=*k];
+                let right = &sequence[*l..=*j];
+                self.interior(left, right)
+            }
+            NearestNeighborLoop::Multibranch { closing: (i, j), branches } => {
+                let mut slices: Vec<&[Base]> = Vec::new();
+                let mut start = *i;
+                for &(k, l) in branches {
+                    slices.push(&sequence[start..=k]);
+                    start = l;
+                }
+                slices.push(&sequence[start..=*j]);
+                self.multibranch(&slices)
+            }
+            NearestNeighborLoop::Exterior { branches } => {
+                let mut slices: Vec<&[Base]> = Vec::new();
+                let mut start = 0;
+                for &(k, l) in branches {
+                    slices.push(&sequence[start..=k]);
+                    start = l;
+                }
+                slices.push(&sequence[start..]);
+                self.exterior(&slices)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::basify;
+
+    #[test]
+    fn test_vrna_hairpin_evaluation() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        assert_eq!(model.hairpin(&basify("GAAAC")).unwrap(), 540);
+        assert_eq!(model.hairpin(&basify("CCGAGG")).unwrap(), 350);
+        assert_eq!(model.hairpin(&basify("CCAAGG")).unwrap(), 330);
+        assert_eq!(model.hairpin(&basify("CAAGG")).unwrap(), 540);
+        assert_eq!(model.hairpin(&basify("CAAAG")).unwrap(), 540);
+        assert_eq!(model.hairpin(&basify("AAAAU")).unwrap(), 590);
+        assert_eq!(model.hairpin(&basify("GAAAU")).unwrap(), 590);
+        assert_eq!(model.hairpin(&basify("CAAAAG")).unwrap(), 410);
+        assert_eq!(model.hairpin(&basify("ACCCU")).unwrap(), 590);
+        assert_eq!(model.hairpin(&basify("GCCCCC")).unwrap(), 490);
+
+        assert_eq!(model.hairpin(&basify("GAAAG")).unwrap(), 590);
+        assert_eq!(model.hairpin(&basify("CAAAC")).unwrap(), 590);
+
+        assert_eq!(model.hairpin(&basify("AAAAAU")).unwrap(), 530);
+        assert_eq!(model.hairpin(&basify("GAAAAU")).unwrap(), 580);
+        assert_eq!(model.hairpin(&basify("ACCCCU")).unwrap(), 540);
+        assert_eq!(model.hairpin(&basify("ACCCCCU")).unwrap(), 550);
+        assert_eq!(model.hairpin(&basify("AAAAAAU")).unwrap(), 540);
+        assert_eq!(model.hairpin(&basify("AAAAAAAU")).unwrap(), 510);
+        assert_eq!(model.hairpin(&basify("AAAAAAAAAAU")).unwrap(), 610);
+        assert_eq!(model.hairpin(&basify("AAAAAAAAAAA")).unwrap(), 660);
+    }
+
+    #[test]
+    fn test_vrna_stacking_evaluation() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        assert_eq!(model.interior(&basify("CG"), &basify("CG")), -240);
+        assert_eq!(model.interior(&basify("AC"), &basify("GU")), -220);
+        assert_eq!(model.interior(&basify("GU"), &basify("AC")), -220);
+    }
+
+    #[test]
+    fn test_vrna_int11_evaluation() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        assert_eq!(model.interior(&basify("CCG"), &basify("CGG")), 50);
+        assert_eq!(model.interior(&basify("CAG"), &basify("CAG")), 90);
+        assert_eq!(model.interior(&basify("ACU"), &basify("AAU")), 190);
+        assert_eq!(model.interior(&basify("GCU"), &basify("AUC")), 120);
+        assert_eq!(model.interior(&basify("GCU"), &basify("AGC")), 120);
+    }
+
+    #[test]
+    fn test_vrna_int21_evaluation() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        assert_eq!(model.interior(&basify("CACG"), &basify("CGG")), 110);
+        assert_eq!(model.interior(&basify("CAAG"), &basify("CAG")), 230);
+        assert_eq!(model.interior(&basify("AACU"), &basify("AAU")), 370);
+        assert_eq!(model.interior(&basify("GACU"), &basify("AUC")), 300);
+        assert_eq!(model.interior(&basify("GACU"), &basify("AGC")), 300);
+
+        assert_eq!(model.interior(&basify("CGG"), &basify("CACG")), 110);
+        assert_eq!(model.interior(&basify("CAG"), &basify("CAAG")), 230);
+        assert_eq!(model.interior(&basify("AAU"), &basify("AACU")), 370);
+        assert_eq!(model.interior(&basify("AUC"), &basify("GACU")), 300);
+        assert_eq!(model.interior(&basify("AGC"), &basify("GACU")), 300);
+    }
+
+    #[test]
+    fn test_vrna_bulge_1_evaluation() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        assert_eq!(model.interior(&basify("CAG"), &basify("CG")), 140);
+        assert_eq!(model.interior(&basify("AAU"), &basify("AU")), 270);
+        assert_eq!(model.interior(&basify("GAU"), &basify("AC")), 160);
+
+        assert_eq!(model.interior(&basify("CCG"), &basify("CG")), 140);
+        assert_eq!(model.interior(&basify("ACU"), &basify("AU")), 270);
+        assert_eq!(model.interior(&basify("GCU"), &basify("AC")), 160);
+
+        assert_eq!(model.interior(&basify("CG"), &basify("CAG")), 140);
+        assert_eq!(model.interior(&basify("AU"), &basify("AAU")), 270);
+        assert_eq!(model.interior(&basify("AC"), &basify("GAU")), 160);
+                                                                
+        assert_eq!(model.interior(&basify("CG"), &basify("CCG")), 140);
+        assert_eq!(model.interior(&basify("AU"), &basify("ACU")), 270);
+        assert_eq!(model.interior(&basify("AC"), &basify("GCU")), 160);
+    }
+
+    #[test]
+    fn test_vrna_bulge_2_evaluation() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        assert_eq!(model.interior(&basify("CAAG"), &basify("CG")), 280);
+        assert_eq!(model.interior(&basify("AAAU"), &basify("AU")), 380);
+        assert_eq!(model.interior(&basify("GAAU"), &basify("AC")), 330);
+
+        assert_eq!(model.interior(&basify("CCAG"), &basify("CG")), 280);
+        assert_eq!(model.interior(&basify("ACAU"), &basify("AU")), 380);
+        assert_eq!(model.interior(&basify("GCAU"), &basify("AC")), 330);
+
+        assert_eq!(model.interior(&basify("CG"), &basify("CAAG")), 280);
+        assert_eq!(model.interior(&basify("AU"), &basify("AAAU")), 380);
+        assert_eq!(model.interior(&basify("AC"), &basify("GAAU")), 330);
+
+        assert_eq!(model.interior(&basify("CG"), &basify("CCAG")), 280);
+        assert_eq!(model.interior(&basify("AU"), &basify("ACAU")), 380);
+        assert_eq!(model.interior(&basify("AC"), &basify("GCAU")), 330);
+    }
+
+    #[test]
+    fn test_vrna_bulge_n_evaluation() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        assert_eq!(model.interior(&basify("CAAAAAAG"), &basify("CG")), 440);
+        assert_eq!(model.interior(&basify("CAAAAAAAAG"), &basify("CG")), 470);
+    }
+
+
+    #[test]
+    fn test_vrna_exterior_single_branch() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -120);
+
+        let seg1 = &basify("UG");
+        let seg2 = &basify("CU");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -120); 
+
+        let seg1 = &basify("G");
+        let seg2 = &basify("CU");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -120);
+ 
+        let seg1 = &basify("UG");
+        let seg2 = &basify("C");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, 0); 
+    }
+
+    #[test]
+    fn test_vrna_exterior_single_branch_t25() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let mut model = ViennaRNA::from_parameter_file(path).unwrap();
+        model.temperature = 25.0;
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -148);
+
+        let seg1 = &basify("UG");
+        let seg2 = &basify("CU");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -148);
+
+        let seg1 = &basify("G");
+        let seg2 = &basify("CU");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -144);
+ 
+        let seg1 = &basify("UG");
+        let seg2 = &basify("C");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, -1); 
+ 
+        let seg1 = &basify("A");
+        let seg2 = &basify("U");
+        let energy = model.exterior(&[seg1, seg2]);
+        assert_eq!(energy, 62); 
+ 
+    }
+
+    #[test]
+    fn test_vrna_exterior_two_branches() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUG");
+        let seg3 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -240);
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUUG");
+        let seg3 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -240);
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUUG");
+        let seg3 = &basify("C");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -120);
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CG");
+        let seg3 = &basify("CU");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -290);
+
+        let seg1 = &basify("ACA");
+        let seg2 = &basify("UGG");
+        let seg3 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3]);
+        assert_eq!(energy, -130);
+    }
+
+    #[test]
+    fn test_vrna_exterior_three_branches() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUG");
+        let seg3 = &basify("CUG");
+        let seg4 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3, seg4]);
+        assert_eq!(energy, -360);
+
+        let seg1 = &basify("AUG");
+        let seg2 = &basify("CUG");
+        let seg3 = &basify("UUG");
+        let seg4 = &basify("CUG");
+        let energy = model.exterior(&[seg1, seg2, seg3, seg4]);
+        assert_eq!(energy, -240);
+    }
+
+ 
+    #[test]
+    fn test_evaluations() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        let seq = "GAAAAC";
+        let dbr = "(....)";
+        let e37 = 450;
+        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+
+        let seq = "GAAAAG";
+        let dbr = "(....)";
+        let e37 = 630;
+        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+
+        let seq = "ACGUUAAAGACGU";
+        let dbr = "(((((...)))))";
+        let e37 = -170;
+        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+
+
+
+    }
+}
+
+ 

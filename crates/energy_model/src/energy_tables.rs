@@ -66,6 +66,17 @@ pub fn basify(seq: &str) -> Vec<Base> {
         .unwrap_or_else(|_| panic!("Invalid character in sequence: {}", seq))
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumCount)]
+pub enum PairTypeRNA {
+    AU,
+    UA,
+    CG,
+    GC,
+    GU,
+    UG,
+    NN,
+}
+
 const PAIR_LOOKUP: [[PairTypeRNA; Base::COUNT]; Base::COUNT] = {
     use Base::*;
     use PairTypeRNA::*;
@@ -94,18 +105,6 @@ pub fn rev_pair_type(pt: &PairTypeRNA) -> PairTypeRNA {
         UG => GU,
         NN => NN,
     }
-}
-
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumCount)]
-pub enum PairTypeRNA {
-    AU,
-    UA,
-    CG,
-    GC,
-    GU,
-    UG,
-    NN,
 }
 
 const P: usize = PairTypeRNA::COUNT;

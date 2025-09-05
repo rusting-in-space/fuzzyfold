@@ -1,6 +1,6 @@
 
-use structure::PairTable;
 use std::ops::Range;
+use structure::PairTable;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NearestNeighborLoop {

@@ -1,9 +1,9 @@
 
-use kinetics::ViennaRNA;
-use kinetics::energy_tables::Base;
-use kinetics::energy_tables::basify;
-use kinetics::coaxial_stacking::eval_multibranch_loop;
-use kinetics::coaxial_stacking::eval_exterior_loop;
+use energy_model::ViennaRNA;
+use energy_model::Base;
+use energy_model::basify;
+use energy_model::coaxial_stacking::eval_multibranch_loop;
+use energy_model::coaxial_stacking::eval_exterior_loop;
 
 fn main() {
     // turn strings into Vec<Base>

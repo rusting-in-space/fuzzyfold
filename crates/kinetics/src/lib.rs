@@ -1,13 +1,6 @@
 #![allow(dead_code)]
-pub mod parameter_parsing;
-pub mod energy_tables;
-pub mod coaxial_stacking;
-pub mod utils;
+//pub mod utils;
 
-mod energy_model;
 mod loop_structure;
-mod loop_decomposition;
 
-pub use energy_model::*;
 pub use loop_structure::*;
-pub use loop_decomposition::*;

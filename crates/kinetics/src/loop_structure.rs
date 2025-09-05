@@ -2,10 +2,10 @@ use nohash_hasher::IntMap;
 use nohash_hasher::IntSet;
 use rustc_hash::FxHashMap;
 
-use crate::NearestNeighborLoop;
-use crate::LoopDecomposition;
-use crate::EnergyModel;
-use crate::energy_tables::Base;
+use energy_model::NearestNeighborLoop;
+use energy_model::LoopDecomposition;
+use energy_model::EnergyModel;
+use energy_model::Base;
 
 pub struct LoopCache {
     eval_loop: FxHashMap<NearestNeighborLoop, i32>,
@@ -226,7 +226,7 @@ pub fn unpaired_pairs_in_loop<E: EnergyModel>(
     let mut pairs = Vec::new();
     for (idx_i, &i) in unpaired.iter().enumerate() {
         for &j in &unpaired[idx_i + 1..] {
-            if j <= i + model.min_hp_size() {
+            if j <= i + model.min_hairpin_size() {
                 continue;
             }
             if model.can_pair(sequence[i], sequence[j]) {
