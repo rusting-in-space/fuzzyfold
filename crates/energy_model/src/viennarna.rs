@@ -7,7 +7,6 @@ use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use crate::Base;
 use crate::PairTypeRNA;
-use crate::pair_type;
 use crate::EnergyTables;
 use crate::ParamError;
 use crate::EnergyModel;
@@ -34,22 +33,27 @@ pub struct ViennaRNA {
 
     lxc37: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
 
-    pub energy_tables: EnergyTables,
+    // ML params section -- hardcoded.
+    ml_base_en37: i32,
+    ml_base_enth: i32,
+    ml_closing_en37: i32,
+    ml_closing_enth: i32,
+    ml_intern_en37: i32,
+    ml_intern_enth: i32,
 
-    // dcal/mol
-    pub g37_initiation: i32,
-    pub h_initiation: i32,
-    pub g37_ru_end: i32,
-    pub h_ru_end: i32,
-    pub g37_symmetry: i32,
-    pub h_symmetry: i32,
+    ninio_en37: i32,
+    ninio_enth: i32,
+    max_ninio: i32,
 
-    pub g37_coaxial_mm_discontious: i32,
-    pub h_coaxial_mm_discontious: i32,
-    pub g37_coaxial_mm_wcf_bonus: i32,
-    pub h_coaxial_mm_wcf_bonus: i32,
-    pub g37_coaxial_mm_gu_bonus: i32,
-    pub h_coaxial_mm_gu_bonus: i32,
+    duplex_initiation_en37: i32,
+    duplex_initiation_enth: i32,
+    terminal_ru_en37: i32,
+    terminal_ru_enth: i32,
+
+    symmetry_en37: i32,
+    symmetry_enth: i32,
+
+    energy_tables: EnergyTables,
 }
 
 impl ViennaRNA {
@@ -58,22 +62,30 @@ impl ViennaRNA {
         Ok(ViennaRNA {
             temperature: 37.0,
             min_hp_size: 3,
-            lxc37: 107.856, //TODO
-            energy_tables,
 
-            g37_initiation: 409, // +/- 0.22
-            h_initiation: 361, // +/- 4.12
-            g37_ru_end: 50, // NOTE: WRONG
-            //g37_ru_end: 45, // +/- 0.04
-            h_ru_end: 372, // +/- 0.83
-            g37_symmetry: 43,
-            h_symmetry: 0,
-            g37_coaxial_mm_discontious: -210,
-            h_coaxial_mm_discontious: -846, // +/- 2.75
-            g37_coaxial_mm_wcf_bonus: -40,
-            h_coaxial_mm_wcf_bonus: -40,
-            g37_coaxial_mm_gu_bonus: -20,
-            h_coaxial_mm_gu_bonus: -20,
+            lxc37: 107.856, //TODO
+                            
+            // ML params section -- hardcoded.
+            ml_base_en37: 0,
+            ml_base_enth: 0,
+            ml_closing_en37: 930,
+            ml_closing_enth: 3000,
+            ml_intern_en37: -90,
+            ml_intern_enth: -220,
+
+            ninio_en37: 60,
+            ninio_enth: 320,
+            max_ninio: 300,
+
+            duplex_initiation_en37: 410,
+            duplex_initiation_enth: 360,
+            terminal_ru_en37: 50,
+            terminal_ru_enth: 370,
+
+            symmetry_en37: 43,
+            symmetry_enth: 0,
+
+            energy_tables,
         })
     }
 
@@ -106,22 +118,22 @@ impl ViennaRNA {
         };
 
         // NOTE: double check NN desrciption if this is indeed the correct way.
-        if n == 3 && matches!(pair_type(seq[0], *seq.last().unwrap())
+        if n == 3 && matches!((seq[0], *seq.last().unwrap()).into()
             , PairTypeRNA::GU | PairTypeRNA::UG 
             | PairTypeRNA::AU | PairTypeRNA::UA
             | PairTypeRNA::NN
         ) { 
-            en37 += self.g37_ru_end;
-            enth += self.h_ru_end;
+            en37 += self.terminal_ru_en37;
+            enth += self.terminal_ru_enth;
         } else if n > 3 {
             en37 += self.energy_tables.mismatch_hairpin[
-                pair_type(seq[0], seq[n+1]) as usize][ 
+                PairTypeRNA::from((seq[0], seq[n+1])) as usize][ 
                     seq[1] as usize][
                     seq[n] as usize
                     ].ok_or(ParamError::MissingValue("mismatch_hairpin", n))?;
 
             enth += self.energy_tables.mismatch_hairpin_enthalpies[
-                pair_type(seq[0], seq[n+1]) as usize][ 
+                PairTypeRNA::from((seq[0], seq[n+1])) as usize][ 
                     seq[1] as usize][
                     seq[n] as usize
                     ].ok_or(ParamError::MissingValue("mismatch_hairpin", n))?;
@@ -136,146 +148,107 @@ impl ViennaRNA {
 
     /// g37 = g37 AU end-penalty + sum(37-stacking)
     fn interior(&self, fwdseq: &[Base], revseq: &[Base]) -> i32 {
-        let (en37, enth) =
-        if fwdseq.len() == 2 && revseq.len() == 2 {
-            (self.energy_tables.stack[
-               pair_type(fwdseq[0], revseq[1]) as usize][
-               pair_type(revseq[0], fwdseq[1]) as usize].expect("from file"),
-            self.energy_tables.stack_enthalpies[
-               pair_type(fwdseq[0], revseq[1]) as usize][
-               pair_type(revseq[0], fwdseq[1]) as usize].expect("from file"))
-        } else if fwdseq.len() == 3 && revseq.len() == 3 {
-            // 1-1 interior loop
-            (self.energy_tables.int11
-                [pair_type(fwdseq[0], revseq[2]) as usize]
-                [pair_type(revseq[0], fwdseq[2]) as usize]
-                [fwdseq[1] as usize]
-                [revseq[1] as usize].expect("from file"),
-            self.energy_tables.int11_enthalpies
-                [pair_type(fwdseq[0], revseq[2]) as usize]
-                [pair_type(revseq[0], fwdseq[2]) as usize]
-                [fwdseq[1] as usize]
-                [revseq[1] as usize].expect("from file"))
-        } else if fwdseq.len() == 4 && revseq.len() == 3 {
-            (self.energy_tables.int21
-               [pair_type(fwdseq[0], revseq[2]) as usize]
-               [pair_type(revseq[0], fwdseq[3]) as usize]
-               [fwdseq[1] as usize]
-               [fwdseq[2] as usize]
-               [revseq[1] as usize].expect("from file"),
-            self.energy_tables.int21_enthalpies
-               [pair_type(fwdseq[0], revseq[2]) as usize]
-               [pair_type(revseq[0], fwdseq[3]) as usize]
-               [fwdseq[1] as usize]
-               [fwdseq[2] as usize]
-               [revseq[1] as usize].expect("from file"))
-        } else if fwdseq.len() == 3 && revseq.len() == 4 {
-            (self.energy_tables.int21
-               [pair_type(revseq[0], fwdseq[2]) as usize]
-               [pair_type(fwdseq[0], revseq[3]) as usize]
-               [revseq[1] as usize]
-               [revseq[2] as usize]
-               [fwdseq[1] as usize].expect("from file"),
-            self.energy_tables.int21_enthalpies
-               [pair_type(revseq[0], fwdseq[2]) as usize]
-               [pair_type(fwdseq[0], revseq[3]) as usize]
-               [revseq[1] as usize]
-               [revseq[2] as usize]
-               [fwdseq[1] as usize].expect("from file"))
-        } else if fwdseq.len() == 4 && revseq.len() == 4 {
-            (self.energy_tables.int22
-               [pair_type(revseq[0], fwdseq[1]) as usize]
-               [pair_type(fwdseq[0], revseq[2]) as usize]
-               [fwdseq[1] as usize]
-               [fwdseq[2] as usize]
-               [revseq[1] as usize]
-               [revseq[2] as usize].expect("from file"),
-            self.energy_tables.int22_enthalpies
-               [pair_type(revseq[0], fwdseq[1]) as usize]
-               [pair_type(fwdseq[0], revseq[2]) as usize]
-               [fwdseq[1] as usize]
-               [fwdseq[2] as usize]
-               [revseq[1] as usize]
-               [revseq[2] as usize].expect("from file"))
-        } else if fwdseq.len() == 3 && revseq.len() == 2 {
-            // SpecialC if C adjacent to paired C missing!
-            // Initiation terms
-            (self.energy_tables.bulge[1].unwrap() 
-             + self.energy_tables.stack[
-             pair_type(fwdseq[0], revseq[1]) as usize][
-             pair_type(revseq[0], fwdseq[2]) as usize]
-             .expect("from file")
-             ,self.energy_tables.bulge_enthalpies[1].unwrap()
-             + self.energy_tables.stack_enthalpies[
-             pair_type(fwdseq[0], revseq[1]) as usize][
-             pair_type(revseq[0], fwdseq[2]) as usize]
-             .expect("from file"))
-        } else if fwdseq.len() == 2 && revseq.len() == 3 {
-            (self.energy_tables.bulge[1].unwrap() 
-             + self.energy_tables.stack[
-             pair_type(fwdseq[0], revseq[2]) as usize][
-             pair_type(revseq[0], fwdseq[1]) as usize]
-             .expect("from file")
-             ,self.energy_tables.bulge_enthalpies[1].unwrap()
-             + self.energy_tables.stack_enthalpies[
-             pair_type(fwdseq[0], revseq[2]) as usize][
-             pair_type(revseq[0], fwdseq[1]) as usize]
-             .expect("from file"))
-        } else if fwdseq.len() > 3 && revseq.len() == 2 {
-            let (pg1, th1) = if matches!(pair_type(fwdseq[0], revseq[1])
-                , PairTypeRNA::GU | PairTypeRNA::UG 
-                | PairTypeRNA::AU | PairTypeRNA::UA
-                | PairTypeRNA::NN
-            ) { 
-                (self.g37_ru_end, self.h_ru_end)
-            } else { (0, 0) };
-            let (pg2, th2) = if matches!(pair_type(*fwdseq.last().unwrap(), revseq[0])
-                , PairTypeRNA::GU | PairTypeRNA::UG 
-                | PairTypeRNA::AU | PairTypeRNA::UA
-                | PairTypeRNA::NN
-            ) { 
-                (self.g37_ru_end, self.h_ru_end)
-            } else { (0, 0) };
+        let outer = PairTypeRNA::from((*fwdseq.first().unwrap(), *revseq.last().unwrap()));
+        let inner = PairTypeRNA::from((*revseq.first().unwrap(), *fwdseq.last().unwrap()));
 
-            let n = fwdseq.len() - 2;
-            if n <= 30 {
-                (self.energy_tables.bulge[n].unwrap() + pg1 + pg2,
-                self.energy_tables.bulge_enthalpies[n].unwrap() + th1 + th2)
-            } else {
-                (self.energy_tables.hairpin[30].unwrap() + pg1 + pg2
-                 + (self.lxc37 * (n as f64).ln() / 30.) as i32,
-                 self.energy_tables.hairpin_enthalpies[30].unwrap() + th1 + th2
-                 + (self.lxc37 * (n as f64).ln() / 30.) as i32)
-            }
-        } else if fwdseq.len() == 2 && revseq.len() > 3 {
-            let (pg1, th1) = if matches!(pair_type(fwdseq[0], *revseq.last().unwrap())
-                , PairTypeRNA::GU | PairTypeRNA::UG 
-                | PairTypeRNA::AU | PairTypeRNA::UA
-                | PairTypeRNA::NN
-            ) { 
-                (self.g37_ru_end, self.h_ru_end)
-            } else { (0, 0) };
-            let (pg2, th2) = if matches!(pair_type(fwdseq[1], revseq[0])
-                , PairTypeRNA::GU | PairTypeRNA::UG 
-                | PairTypeRNA::AU | PairTypeRNA::UA
-                | PairTypeRNA::NN
-            ) { 
-                (self.g37_ru_end, self.h_ru_end)
-            } else { (0, 0) };
+        let is_ru_end = |pt| matches!(pt
+            , PairTypeRNA::GU | PairTypeRNA::UG 
+            | PairTypeRNA::AU | PairTypeRNA::UA | PairTypeRNA::NN);
+        
 
-            let n = revseq.len() - 2;
-            if n <= 30 {
-                (self.energy_tables.bulge[n].unwrap() + pg1 + pg2,
-                self.energy_tables.bulge_enthalpies[n].unwrap() + th1 + th2)
-            } else {
-                (self.energy_tables.hairpin[30].unwrap() + pg1 + pg2
-                 + (self.lxc37 * (n as f64).ln() / 30.) as i32,
-                 self.energy_tables.hairpin_enthalpies[30].unwrap() + th1 + th2
-                 + (self.lxc37 * (n as f64).ln() / 30.) as i32)
+        let (en37, enth) = match (fwdseq.len(), revseq.len()) {
+            (2, 2) => (
+                self.energy_tables.stack
+                [outer as usize][inner as usize].expect("from file")
+                ,
+                self.energy_tables.stack_enthalpies
+                [outer as usize][inner as usize].expect("from file")
+            ),
+            (3, 2) | (2, 3) => (//NOTE: SpecialC if C adjacent to paired C missing!
+                self.energy_tables.bulge[1].unwrap() + 
+                self.energy_tables.stack
+                [outer as usize][inner as usize]
+                .expect("from file")
+                ,
+                self.energy_tables.bulge_enthalpies[1].unwrap() +
+                self.energy_tables.stack_enthalpies
+                [outer as usize][inner as usize]
+                .expect("from file")
+            ),
+            (3, 3) => (
+                self.energy_tables.int11
+                [outer as usize][inner as usize]
+                [fwdseq[1] as usize][revseq[1] as usize].expect("from file")
+                ,
+                self.energy_tables.int11_enthalpies
+                [outer as usize][inner as usize]
+                [fwdseq[1] as usize][revseq[1] as usize].expect("from file")
+            ),
+            (4, 3) => (
+                self.energy_tables.int21
+                [outer as usize][inner as usize]
+                [fwdseq[1] as usize][fwdseq[2] as usize]
+                [revseq[1] as usize].expect("from file")
+                ,
+                self.energy_tables.int21_enthalpies
+                [outer as usize][inner as usize]
+                [fwdseq[1] as usize][fwdseq[2] as usize]
+                [revseq[1] as usize].expect("from file")
+            ),
+            (3, 4) => (
+                self.energy_tables.int21
+                [inner as usize][outer as usize]
+                [revseq[1] as usize][revseq[2] as usize]
+                [fwdseq[1] as usize].expect("from file")
+                ,
+                self.energy_tables.int21_enthalpies
+                [inner as usize][outer as usize]
+                [revseq[1] as usize][revseq[2] as usize]
+                [fwdseq[1] as usize].expect("from file")
+            ),
+            (4, 4) => (
+                self.energy_tables.int22
+                [outer as usize][inner as usize]
+                [fwdseq[1] as usize][fwdseq[2] as usize]
+                [revseq[1] as usize][revseq[2] as usize]
+                .expect("from file")
+                ,
+                self.energy_tables.int22_enthalpies
+                [outer as usize][inner as usize]
+                [fwdseq[1] as usize][fwdseq[2] as usize]
+                [revseq[1] as usize][revseq[2] as usize]
+                .expect("from file")
+            ),
+            (l, 2) | (2, l) => { // General Bulge case
+                let n = l - 2;
+                let (pg1, th1) = if is_ru_end(outer) { (self.terminal_ru_en37, self.terminal_ru_enth) } else { (0, 0) };
+                let (pg2, th2) = if is_ru_end(inner) { (self.terminal_ru_en37, self.terminal_ru_enth) } else { (0, 0) };
+                if n <= 30 {(
+                    self.energy_tables.bulge[n].unwrap() + pg1 + pg2,
+                    self.energy_tables.bulge_enthalpies[n].unwrap() + th1 + th2
+                )} else {(
+                    self.energy_tables.bulge[30].unwrap() + pg1 + pg2 +
+                    (self.lxc37 * (n as f64).ln() / 30.) as i32,
+                    self.energy_tables.bulge_enthalpies[30].unwrap() + th1 + th2 +
+                    (self.lxc37 * (n as f64).ln() / 30.) as i32
+                )}
+            },
+            (lfwd, lrev) => { 
+                let n = (lfwd as isize - lrev as isize).abs() as usize;
+                let (pg1, th1) = if is_ru_end(outer) { (self.terminal_ru_en37, self.terminal_ru_enth) } else { (0, 0) };
+                let (pg2, th2) = if is_ru_end(inner) { (self.terminal_ru_en37, self.terminal_ru_enth) } else { (0, 0) };
+
+                if n <= 30 {(
+                    self.energy_tables.interior[n].unwrap() + pg1 + pg2,
+                    self.energy_tables.interior_enthalpies[n].unwrap() + th1 + th2
+                )} else {(
+                    self.energy_tables.interior[30].unwrap() + pg1 + pg2 +
+                    (self.lxc37 * (n as f64).ln() / 30.) as i32,
+                    self.energy_tables.interior_enthalpies[30].unwrap() + th1 + th2 +
+                    (self.lxc37 * (n as f64).ln() / 30.) as i32
+                )}
             }
-        } else {
-            (0, 0)
-        }; 
+        };
 
         if self.temperature == 37.0 { 
             en37
@@ -285,29 +258,82 @@ impl ViennaRNA {
     }
 
     fn multibranch(&self, segments: &[&[Base]]) -> i32 {
-        let branches = segments.len();
-        let unpaired: usize = segments.iter().map(|s| s.len() - 2).sum();
-        let a = 340.0; // 3.4 kcal/mol = 34 dcal
-        let b =  40.0; // 0.4 kcal/mol = 4 dcal
-        let c =  10.0; // 0.1 kcal/mol = 1 dcal
-        let energy = a + b * (branches as f64) + c * (unpaired as f64);
-        energy.round() as i32
+        let is_ru_end = |pt| matches!(pt
+            , PairTypeRNA::GU | PairTypeRNA::UG 
+            | PairTypeRNA::AU | PairTypeRNA::UA | PairTypeRNA::NN);
+
+        let n = segments.len(); 
+
+        let mut en37 = 0;
+        let mut enth = 0;
+ 
+        for i in 0..n {
+            let j = (i + 1) % n; 
+            let pair = PairTypeRNA::from((*segments[i].last().unwrap(), segments[j][0]));
+            if is_ru_end(pair) { 
+                en37 += self.terminal_ru_en37;
+                enth += self.terminal_ru_enth;
+            }
+            let d5 = segments.get(i)
+                .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(d)));
+            let d3 = segments.get(j)
+                .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(1)));
+
+            //NOTE: This does not take the minimum over all options, it always
+            // prefers terminal mismatch over single dangling.
+            let (g, h) = match (d5, d3) { 
+                (Some(&b5), Some(&b3)) => 
+                    (self.energy_tables.mismatch_exterior[pair as usize][b5 as usize][b3 as usize].unwrap(),
+                     self.energy_tables.mismatch_exterior_enthalpies[pair as usize][b5 as usize][b3 as usize].unwrap()),
+                (Some(&b5), None) => 
+                    (self.energy_tables.dangle5[pair as usize][b5 as usize].unwrap(),
+                     self.energy_tables.dangle5_enthalpies[pair as usize][b5 as usize].unwrap()),
+                (None, Some(&b3)) => 
+                    (self.energy_tables.dangle3[pair as usize][b3 as usize].unwrap(),
+                     self.energy_tables.dangle3_enthalpies[pair as usize][b3 as usize].unwrap()),
+                _ => (0, 0),
+            };
+            en37 += g;
+            enth += h;
+        }
+ 
+        let branches = segments.len() as i32;
+        //let avg_asym = (2.0f64).min({
+        //    let mut asy = Vec::new();
+        //    for i in 0..segments.len() {
+        //        let l = segments[i].len() as f64;
+        //        let r = segments[i + 1 % segments.len()].len() as f64;
+        //        asy.push((l - r).abs());
+        //    }
+        //    assert!(asy.len() > 1);
+        //    asy.iter().sum::<f64>() / asy.len() as f64
+        //});
+
+        en37 += self.ml_closing_en37 + self.ml_intern_en37 * branches;
+        enth += self.ml_closing_enth + self.ml_intern_enth * branches;
+
+        if self.temperature == 37.0 { 
+            en37
+        } else {
+            rescale_energy_to_temp(enth, en37, self.temperature)
+        }
     }
 
     fn exterior(&self, segments: &[&[Base]]) -> i32 {
+        let is_ru_end = |pt| matches!(pt
+            , PairTypeRNA::GU | PairTypeRNA::UG 
+            | PairTypeRNA::AU | PairTypeRNA::UA | PairTypeRNA::NN);
+ 
         let mut en37 = 0;
         let mut enth = 0;
         let n = segments.len() - 1; 
         for i in 0..n {
             let j = i + 1; 
-            let pair = pair_type(*segments[i].last().unwrap(), segments[j][0]);
-            if matches!(pair
-                , PairTypeRNA::GU | PairTypeRNA::UG 
-                | PairTypeRNA::AU | PairTypeRNA::UA
-                | PairTypeRNA::NN
-            ) { 
-                en37 += self.g37_ru_end;
-                enth += self.h_ru_end;
+            
+            let pair = (*segments[i].last().unwrap(), segments[j][0]).into();
+            if is_ru_end(pair) { 
+                en37 += self.terminal_ru_en37;
+                enth += self.terminal_ru_enth;
             }
 
             let d5 = segments.get(i)
@@ -337,30 +363,6 @@ impl ViennaRNA {
         } else {
             rescale_energy_to_temp(enth, en37, self.temperature)
         }
-    }
-
-}
-
-impl EnergyModel for ViennaRNA {
-
-    fn can_pair(&self, b1: Base, b2: Base) -> bool {
-        matches!((b1, b2),
-        (Base::A, Base::U) | (Base::U, Base::A) |
-        (Base::G, Base::C) | (Base::C, Base::G) |
-        (Base::G, Base::U) | (Base::U, Base::G))
-    }
-
-    fn min_hairpin_size(&self) -> usize { self.min_hp_size }
-
-    fn energy_of_structure<T: LoopDecomposition>(&self, 
-        sequence: &[Base], 
-        structure: &T
-    ) -> i32  {
-        let mut total = 0;
-        structure.for_each_loop(|l| {
-            total += self.energy_of_loop(sequence, l);
-        });
-        total
     }
 
     fn energy_of_pair(&self, 
@@ -394,6 +396,30 @@ impl EnergyModel for ViennaRNA {
             let en_absent = self.energy_of_loop(sequence, &combo);
             return en_paired - en_absent 
         }
+    }
+
+}
+
+impl EnergyModel for ViennaRNA {
+
+    fn can_pair(&self, b1: Base, b2: Base) -> bool {
+        matches!((b1, b2),
+        (Base::A, Base::U) | (Base::U, Base::A) |
+        (Base::G, Base::C) | (Base::C, Base::G) |
+        (Base::G, Base::U) | (Base::U, Base::G))
+    }
+
+    fn min_hairpin_size(&self) -> usize { self.min_hp_size }
+
+    fn energy_of_structure<T: LoopDecomposition>(&self, 
+        sequence: &[Base], 
+        structure: &T
+    ) -> i32  {
+        let mut total = 0;
+        structure.for_each_loop(|l| {
+            total += self.energy_of_loop(sequence, l);
+        });
+        total
     }
 
     fn energy_of_loop(&self, sequence: &[Base], nn_loop: &NearestNeighborLoop) -> i32 {
@@ -558,6 +584,30 @@ mod tests {
         assert_eq!(model.interior(&basify("CAAAAAAAAG"), &basify("CG")), 470);
     }
 
+    #[test]
+    fn test_vrna_multibranch() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = ViennaRNA::from_parameter_file(path).unwrap();
+
+        let seg1 = &basify("AAAA");
+        let seg2 = &basify("AAA");
+        let seg3 = &basify("AAAAA");
+        let energy = model.multibranch(&[seg1, seg2, seg3]);
+        assert_eq!(energy, 720);
+
+        let seg1 = &basify("GAAC");
+        let seg2 = &basify("GAC");
+        let seg3 = &basify("GAAAC");
+        let energy = model.multibranch(&[seg1, seg2, seg3]);
+        assert_eq!(energy, 330);
+
+        let seg1 = &basify("GAAC");
+        let seg2 = &basify("GAC");
+        let seg3 = &basify("GAAAAAAAAAAAAAAAAAAC");
+        let energy = model.multibranch(&[seg1, seg2, seg3]);
+        assert_eq!(energy, 330);
+
+    }
 
     #[test]
     fn test_vrna_exterior_single_branch() {

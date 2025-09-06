@@ -77,6 +77,48 @@ pub enum PairTypeRNA {
     NN,
 }
 
+impl From<(Base, Base)> for PairTypeRNA {
+    fn from(pair: (Base, Base)) -> Self {
+        PAIR_LOOKUP[pair.0 as usize][pair.1 as usize]
+    }
+}
+
+impl PairTypeRNA {
+    pub fn is_ru(&self) -> bool {
+       matches!(self
+            , PairTypeRNA::GU | PairTypeRNA::UG 
+            | PairTypeRNA::AU | PairTypeRNA::UA)
+    }
+
+    pub fn is_wcf(&self) -> bool {
+       matches!(self
+            , PairTypeRNA::GC | PairTypeRNA::CG 
+            | PairTypeRNA::AU | PairTypeRNA::UA)
+    }
+
+    pub fn is_wobble(&self) -> bool {
+       matches!(self, PairTypeRNA::GU | PairTypeRNA::UG)
+    }
+
+    pub fn can_pair(&self) -> bool {
+       self != &PairTypeRNA::NN
+    }
+    
+    pub fn invert(&self) -> PairTypeRNA {
+        use PairTypeRNA::*;
+        match self {
+            AU => UA,
+            UA => AU,
+            CG => GC,
+            GC => CG,
+            GU => UG,
+            UG => GU,
+            NN => NN,
+        }
+    }
+}
+
+
 const PAIR_LOOKUP: [[PairTypeRNA; Base::COUNT]; Base::COUNT] = {
     use Base::*;
     use PairTypeRNA::*;
@@ -89,23 +131,6 @@ const PAIR_LOOKUP: [[PairTypeRNA; Base::COUNT]; Base::COUNT] = {
     table[U as usize][G as usize] = UG;
     table
 };
-
-pub fn pair_type(b5: Base, b3: Base) -> PairTypeRNA {
-    PAIR_LOOKUP[b5 as usize][b3 as usize]
-}
-
-pub fn rev_pair_type(pt: &PairTypeRNA) -> PairTypeRNA {
-    use PairTypeRNA::*;
-    match pt {
-        AU => UA,
-        UA => AU,
-        CG => GC,
-        GC => CG,
-        GU => UG,
-        UG => GU,
-        NN => NN,
-    }
-}
 
 const P: usize = PairTypeRNA::COUNT;
 const B: usize = Base::COUNT;

@@ -3,8 +3,6 @@ use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use crate::energy_tables::Base;
 
-use structure::PairTable;
-
 pub trait EnergyModel {
     fn can_pair(&self, b1: Base, b2: Base) -> bool;
 
@@ -13,15 +11,6 @@ pub trait EnergyModel {
     fn energy_of_structure<T: LoopDecomposition>(&self, 
         sequence: &[Base], 
         structure: &T
-    ) -> i32;
-
-    /// The free energy difference between forming the pair vs breaking it.
-    //TODO: may not be particularly efficient, and depends on PairTable!
-    fn energy_of_pair(&self, 
-        sequence: &[Base], 
-        structure: &PairTable,
-        i: usize,
-        j: usize,
     ) -> i32;
 
     fn energy_of_loop(&self, 
@@ -52,16 +41,6 @@ mod tests {
             _structure: &T,
         ) -> i32 {
             -10 // dummy value
-        }
-
-        fn energy_of_pair(
-            &self,
-            _sequence: &[Base],
-            _structure: &PairTable,
-            _i: usize,
-            _j: usize,
-        ) -> i32 {
-            -3 // dummy value
         }
 
         fn energy_of_loop(

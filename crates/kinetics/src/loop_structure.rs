@@ -242,9 +242,9 @@ pub fn unpaired_pairs_in_loop<E: EnergyModel>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ViennaRNA;
     use structure::PairTable;
-    use crate::energy_tables::basify;
+    use energy_model::ViennaRNA;
+    use energy_model::basify;
 
     #[test]
     fn test_loop_structure() {

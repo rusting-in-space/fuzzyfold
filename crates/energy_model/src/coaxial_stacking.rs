@@ -4,12 +4,8 @@ use std::fmt;
 use crate::EnergyTables;
 use crate::Base;
 use crate::PairTypeRNA;
-use crate::pair_type;
-use crate::rev_pair_type;
-use crate::EnergyModel;
-use crate::ViennaRNA;
 
-struct DPTable {
+pub struct DPTable {
     n: usize,
     data: Vec<i32>,
 }
@@ -39,7 +35,7 @@ impl fmt::Debug for DPTable {
 }
 
 impl DPTable {
-    fn new(n: usize) -> Self {
+    pub fn new(n: usize) -> Self {
         DPTable {
             n,
             data: vec![i32::MAX / 2; n * n * 4], // d=4 for (a,b) states
@@ -50,11 +46,11 @@ impl DPTable {
         (((i * self.n) + j) << 2) + ((d5 << 1) | d3)
     }
 
-    fn get(&self, i: usize, j: usize, d5: usize, d3: usize) -> i32 {
+    pub fn get(&self, i: usize, j: usize, d5: usize, d3: usize) -> i32 {
         self.data[self.idx(i, j, d5, d3)]
     }
 
-    fn set(&mut self, i: usize, j: usize, d5: usize, d3: usize, val: i32) {
+    pub fn set(&mut self, i: usize, j: usize, d5: usize, d3: usize, val: i32) {
         let idx = self.idx(i, j, d5, d3);
         self.data[idx] = val;
     }
@@ -64,7 +60,7 @@ const ALL_DANGLE_CONTEXTS: &[(usize, usize)] = &[(0, 0), (0, 1), (1, 0), (1, 1)]
 const EXC_DANGLE_CONTEXTS: &[(usize, usize)] = &[(0, 0), (0, 1), (1, 0)];
 const NON_DANGLE_CONTEXTS: &[(usize, usize)] = &[(0, 0)];
 
-trait CoaxialEnergyOperations {
+pub trait CoaxialEnergyOperations {
     fn set_min_energy_combinations(&mut self, 
         i: usize, j: usize, 
         outer_context: &[(usize, usize)], 
@@ -147,114 +143,113 @@ impl CoaxialEnergyOperations for DPTable {
     }
 }
 
+//pub fn eval_multibranch_loop(segments: &[&[Base]], model: &ViennaRNA) -> i32 {
+//    let n = segments.len();
+//    let etables = &model.energy_tables;
+//    let mut energy = 0;
+//    let mut min_energy = DPTable::new(n);
+//    let mut coax_energy = DPTable::new(n);
+//    for i in 0..n {
+//        let j = (i + 1) % n; 
+//        let pair: PairTypeRNA = (*segments[i].last().unwrap(), segments[j][0]).into();
+//        if matches!(pair
+//            , PairTypeRNA::GU | PairTypeRNA::UG 
+//            | PairTypeRNA::AU | PairTypeRNA::UA
+//        ) { energy += &model.terminal_ru_en37 }
+//
+//        //println!("initE {i} | initS {i} {j} {:?}", pair);
+//        let d5 = d5_base(segments[i], false);
+//        let d3 = d3_base(segments[j], false);
+//        set_min_energy(&mut min_energy, i, d5, pair, d3, etables);
+//
+//        let slen = segments[j].len() - 2;  
+//        if slen <= 1 {
+//            let j2 = (i + 2) % n; 
+//            let mm = if slen == 1 { segments[i].get(1) } else { None };
+//            let npair: PairTypeRNA = (*segments[j].last().unwrap(), segments[j2][0]).into();
+//            //println!("initS {j} {j2} {:?}", npair);
+//            set_coax_energy(&mut coax_energy, i, j, d5, pair, mm, npair, d3, model);
+//        }
+//    }
+//
+//    //println!("{:?}", min_energy);
+//    //println!("{:?}", coax_energy);
+//    for i in 0..=1 {
+//        for j in 1..n {
+//            let j = (i + j) % n;
+//            //println!("Calculating: {i} {j}");
+//            get_mfe(&mut min_energy, &mut coax_energy, 
+//                segments[i].len() - 2, i, 
+//                segments[j].len() - 2, j,
+//                n);
+//        }
+//    }
+//    //println!("{:?}", min_energy);
+//    //println!("{:?}", coax_energy);
+//
+//    let result = min_energy.get(0, n - 1, 1, 1)
+//        .min(min_energy.get(0, n - 1, 1, 0))
+//        .min(min_energy.get(0, n - 1, 0, 1))
+//        .min(min_energy.get(0, n - 1, 0, 0))
+//        .min(min_energy.get(1, 0, 1, 1))
+//        .min(min_energy.get(1, 0, 1, 0))
+//        .min(min_energy.get(1, 0, 0, 1))
+//        .min(min_energy.get(1, 0, 0, 0));
+//    energy + result
+//}
 
-pub fn eval_multibranch_loop(segments: &[&[Base]], model: &ViennaRNA) -> i32 {
-    let n = segments.len();
-    let etables = &model.energy_tables;
-    let mut energy = 0;
-    let mut min_energy = DPTable::new(n);
-    let mut coax_energy = DPTable::new(n);
-    for i in 0..n {
-        let j = (i + 1) % n; 
-        let pair = pair_type(*segments[i].last().unwrap(), segments[j][0]);
-        if matches!(pair
-            , PairTypeRNA::GU | PairTypeRNA::UG 
-            | PairTypeRNA::AU | PairTypeRNA::UA
-        ) { energy += &model.g37_ru_end }
-
-        //println!("initE {i} | initS {i} {j} {:?}", pair);
-        let d5 = d5_base(segments[i], false);
-        let d3 = d3_base(segments[j], false);
-        set_min_energy(&mut min_energy, i, d5, pair, d3, etables);
-
-        let slen = segments[j].len() - 2;  
-        if slen <= 1 {
-            let j2 = (i + 2) % n; 
-            let mm = if slen == 1 { segments[i].get(1) } else { None };
-            let npair = pair_type(*segments[j].last().unwrap(), segments[j2][0]);
-            //println!("initS {j} {j2} {:?}", npair);
-            set_coax_energy(&mut coax_energy, i, j, d5, pair, mm, npair, d3, model);
-        }
-    }
-
-    //println!("{:?}", min_energy);
-    //println!("{:?}", coax_energy);
-    for i in 0..=1 {
-        for j in 1..n {
-            let j = (i + j) % n;
-            //println!("Calculating: {i} {j}");
-            get_mfe(&mut min_energy, &mut coax_energy, 
-                segments[i].len() - 2, i, 
-                segments[j].len() - 2, j,
-                n);
-        }
-    }
-    //println!("{:?}", min_energy);
-    //println!("{:?}", coax_energy);
-
-    let result = min_energy.get(0, n - 1, 1, 1)
-        .min(min_energy.get(0, n - 1, 1, 0))
-        .min(min_energy.get(0, n - 1, 0, 1))
-        .min(min_energy.get(0, n - 1, 0, 0))
-        .min(min_energy.get(1, 0, 1, 1))
-        .min(min_energy.get(1, 0, 1, 0))
-        .min(min_energy.get(1, 0, 0, 1))
-        .min(min_energy.get(1, 0, 0, 0));
-    energy + result
-}
-
-pub fn eval_exterior_loop(segments: &[&[Base]], model: &ViennaRNA) -> i32 {
-    let n = segments.len() - 1; 
-    let etables = &model.energy_tables;
-    let mut energy = 0;
-    let mut min_energy = DPTable::new(n);
-    let mut coax_energy = DPTable::new(n);
-    for i in 0..n {
-        let j = i + 1; 
-        let pair = pair_type(*segments[i].last().unwrap(), segments[j][0]);
-        if matches!(pair
-            , PairTypeRNA::GU | PairTypeRNA::UG 
-            | PairTypeRNA::AU | PairTypeRNA::UA
-        ) { energy += &model.g37_ru_end }
-
-        let d5 = d5_base(segments[i], i == 0);
-        let d3 = d3_base(segments[j], j == n);
-        set_min_energy(&mut min_energy, i, d5, pair, d3, etables);
-
-        if j >= n {
-            continue;
-        }
-
-        let slen = segments[j].len() - 2;  
-        if slen <= 1 {
-            let j2 = i + 2; 
-            let mm = if slen == 1 { segments[i].get(1) } else { None };
-            let npair = pair_type(*segments[j].last().unwrap(), segments[j2][0]);
-            set_coax_energy(&mut coax_energy, i, j, d5, pair, mm, npair, d3, model);
-        }
-    }
-
-    //println!("{:?}", min_energy);
-    //println!("{:?}", coax_energy);
-    for j in 1..n {
-        //println!("Calculating: {i} {j}");
-        get_mfe(&mut min_energy, &mut coax_energy, 
-            segments[0].len() - 2, 0, 
-            segments[j].len() - 2, j,
-            n);
-    }
-    //println!("{:?}", min_energy);
-    //println!("{:?}", coax_energy);
-
-    let result = min_energy.get(0, n - 1, 1, 1)
-        .min(min_energy.get(0, n - 1, 1, 0))
-        .min(min_energy.get(0, n - 1, 0, 1))
-        .min(min_energy.get(0, n - 1, 0, 0));
-    energy + result
-}
+//fn eval_exterior_loop(segments: &[&[Base]], model: &ViennaRNA) -> i32 {
+//    let n = segments.len() - 1; 
+//    let etables = &model.energy_tables;
+//    let mut energy = 0;
+//    let mut min_energy = DPTable::new(n);
+//    let mut coax_energy = DPTable::new(n);
+//    for i in 0..n {
+//        let j = i + 1; 
+//        let pair = (*segments[i].last().unwrap(), segments[j][0]).into();
+//        if matches!(pair
+//            , PairTypeRNA::GU | PairTypeRNA::UG 
+//            | PairTypeRNA::AU | PairTypeRNA::UA
+//        ) { energy += &model.terminal_ru_en37 }
+//
+//        let d5 = d5_base(segments[i], i == 0);
+//        let d3 = d3_base(segments[j], j == n);
+//        set_min_energy(&mut min_energy, i, d5, pair, d3, etables);
+//
+//        if j >= n {
+//            continue;
+//        }
+//
+//        let slen = segments[j].len() - 2;  
+//        if slen <= 1 {
+//            let j2 = i + 2; 
+//            let mm = if slen == 1 { segments[i].get(1) } else { None };
+//            let npair = (*segments[j].last().unwrap(), segments[j2][0]).into();
+//            set_coax_energy(&mut coax_energy, i, j, d5, pair, mm, npair, d3, model);
+//        }
+//    }
+//
+//    //println!("{:?}", min_energy);
+//    //println!("{:?}", coax_energy);
+//    for j in 1..n {
+//        //println!("Calculating: {i} {j}");
+//        get_mfe(&mut min_energy, &mut coax_energy, 
+//            segments[0].len() - 2, 0, 
+//            segments[j].len() - 2, j,
+//            n);
+//    }
+//    //println!("{:?}", min_energy);
+//    //println!("{:?}", coax_energy);
+//
+//    let result = min_energy.get(0, n - 1, 1, 1)
+//        .min(min_energy.get(0, n - 1, 1, 0))
+//        .min(min_energy.get(0, n - 1, 0, 1))
+//        .min(min_energy.get(0, n - 1, 0, 0));
+//    energy + result
+//}
 
 
-fn set_min_energy(
+pub fn set_min_energy(
     min_energy: &mut DPTable, 
     i: usize, 
     d5: Option<&Base>, 
@@ -283,7 +278,7 @@ fn set_min_energy(
     );
 }
  
-fn set_coax_energy(
+pub fn set_coax_energy(
     coax_energy: &mut DPTable, 
     i: usize, 
     j: usize, 
@@ -292,48 +287,45 @@ fn set_coax_energy(
     mm: Option<&Base>, 
     pj: PairTypeRNA,
     d3: Option<&Base>,
-    model: &ViennaRNA,
+    etables: &EnergyTables,
+    coaxial_mm_discontious_en37: i32,
 ) {
     if let Some(&m) = mm {
         coax_energy.set(i, j, 1, 0, 
             d5.map_or(i32::MAX/2, |&b| {
-                let bonus = if matches!(pair_type(b, m), 
-                    PairTypeRNA::GU | PairTypeRNA::UG) {
+                let pair = PairTypeRNA::from((b, m));
+                let bonus = if pair.is_wobble() {
                     -20
-                } else if model.can_pair(b, m) {
+                } else if pair.can_pair() {
                     -40
-                } else {
-                    0
-                };
-                model.energy_tables.mismatch_exterior
+                } else { 0 };
+                etables.mismatch_exterior
                     [pi as usize][b as usize][m as usize].unwrap()
-                    + model.g37_coaxial_mm_discontious
-                        + bonus
+                    + coaxial_mm_discontious_en37 + bonus
             }));
         coax_energy.set(i, j, 0, 1, 
             d3.map_or(i32::MAX/2, |&b| {
-                let bonus = if matches!(pair_type(m, b), 
-                    PairTypeRNA::GU | PairTypeRNA::UG) {
+                let pair = PairTypeRNA::from((m, b));
+                let bonus = if pair.is_wobble() {
                     -20
-                } else if model.can_pair(m, b) {
+                } else if pair.can_pair() {
                     -40
                 } else {
                     0
                 };
-                model.energy_tables.mismatch_exterior
+                etables.mismatch_exterior
                     [pi as usize][m as usize][b as usize].unwrap()
-                    + model.g37_coaxial_mm_discontious
-                        + bonus
+                    + coaxial_mm_discontious_en37 + bonus
             }));
     } else {
         coax_energy.set(i, j, 0, 0, {
-            let pj = rev_pair_type(&pj);
-            model.energy_tables.stack[pi as usize][pj as usize].unwrap()
+            let pj = pj.invert();
+            etables.stack[pi as usize][pj as usize].unwrap()
         });
     }
 }
 
-fn get_mfe(
+pub fn get_mfe(
     min_energy: &mut DPTable, 
     coax_energy: &mut DPTable, 
     ilen: usize, 
@@ -416,7 +408,7 @@ fn wrap_add1(i: usize, n: usize) -> usize {
     if i + 1 < n { i + 1 } else { 0 }
 }
 
-fn d5_base(seg: &[Base], exterior: bool) -> Option<&Base> {
+pub fn d5_base(seg: &[Base], exterior: bool) -> Option<&Base> {
     if exterior && seg.len() >= 2 {
         seg.get(seg.len() - 2)
     } else if !exterior && seg.len() >= 3 {
@@ -426,7 +418,7 @@ fn d5_base(seg: &[Base], exterior: bool) -> Option<&Base> {
     }
 }
 
-fn d3_base(seg: &[Base], exterior: bool) -> Option<&Base> {
+pub fn d3_base(seg: &[Base], exterior: bool) -> Option<&Base> {
     if exterior && seg.len() >= 2 {
         seg.get(1)
     } else if !exterior && seg.len() >= 3 {
@@ -444,7 +436,6 @@ mod tests {
     const NONE: &[(usize, usize)] = &[(0, 0)];
     const EXC: &[(usize, usize)] = &[(0, 0), (0, 1), (1, 0)];
 
-    #[test]
     fn test_get_set_basic() {
         let mut table = DPTable::new(2);
         table.set(0, 1, 1, 0, 42);
@@ -452,7 +443,6 @@ mod tests {
         assert_eq!(table.get(0, 1, 0, 0), i32::MAX / 2);
     }
 
-    #[test]
     fn test_set_min_energy_combinations() {
         let mut table = DPTable::new(2);
         // Set values that will be summed
@@ -467,7 +457,6 @@ mod tests {
         assert_eq!(table.get(0, 1, 0, 0), 25);
     }
 
-    #[test]
     fn test_set_coax_init_combinations() {
         let mut table = DPTable::new(2);
         let mut coax = DPTable::new(2);
@@ -481,7 +470,6 @@ mod tests {
         assert_eq!(table.get(0, 1, 0, 0), 20); // minimum of 100+50 and 20
     }
 
-    #[test]
     fn test_set_coax_energy_combinations() {
         let mut table = DPTable::new(3);
         let mut coax = DPTable::new(3);

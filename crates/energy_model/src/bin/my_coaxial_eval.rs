@@ -2,8 +2,8 @@
 use energy_model::ViennaRNA;
 use energy_model::Base;
 use energy_model::basify;
-use energy_model::coaxial_stacking::eval_multibranch_loop;
-use energy_model::coaxial_stacking::eval_exterior_loop;
+//use energy_model::coaxial_stacking::eval_multibranch_loop;
+//use energy_model::coaxial_stacking::eval_exterior_loop;
 
 fn main() {
     // turn strings into Vec<Base>
@@ -19,11 +19,11 @@ fn main() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
     let model = ViennaRNA::from_parameter_file(path).unwrap();
 
-    let mfe = eval_multibranch_loop(&binding, &model);
-    println!("Minimum free energy: {}", mfe);
+    //let mfe = eval_multibranch_loop(&binding, &model);
+    //println!("Minimum free energy: {}", mfe);
 
-    let mfe = eval_exterior_loop(&binding, &model);
-    println!("Minimum free energy: {}", mfe);
+    //let mfe = eval_exterior_loop(&binding, &model);
+    //println!("Minimum free energy: {}", mfe);
 
 
     //// construct DP with &[&[Base]]
