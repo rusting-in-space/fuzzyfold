@@ -1,9 +1,9 @@
 use std::error::Error;
 use std::io::{BufRead, stdin};
 
-use energy_model::basify;
-use energy_model::ViennaRNA;
-use energy_model::EnergyModel;
+use energy::basify;
+use energy::ViennaRNA;
+use energy::EnergyModel;
 use structure::PairTable;
 
 fn main() -> Result<(), Box<dyn Error>> {

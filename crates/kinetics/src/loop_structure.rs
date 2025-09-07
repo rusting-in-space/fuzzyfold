@@ -2,10 +2,10 @@ use nohash_hasher::IntMap;
 use nohash_hasher::IntSet;
 use rustc_hash::FxHashMap;
 
-use energy_model::NearestNeighborLoop;
-use energy_model::LoopDecomposition;
-use energy_model::EnergyModel;
-use energy_model::Base;
+use energy::NearestNeighborLoop;
+use energy::LoopDecomposition;
+use energy::EnergyModel;
+use energy::Base;
 
 pub struct LoopCache {
     eval_loop: FxHashMap<NearestNeighborLoop, i32>,
@@ -243,8 +243,8 @@ pub fn unpaired_pairs_in_loop<E: EnergyModel>(
 mod tests {
     use super::*;
     use structure::PairTable;
-    use energy_model::ViennaRNA;
-    use energy_model::basify;
+    use energy::ViennaRNA;
+    use energy::basify;
 
     #[test]
     fn test_loop_structure() {

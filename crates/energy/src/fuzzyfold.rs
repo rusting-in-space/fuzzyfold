@@ -10,11 +10,7 @@ use crate::PairTypeRNA;
 use crate::EnergyTables;
 use crate::ParamError;
 use crate::EnergyModel;
-use crate::coaxial_stacking::DPTable;
-use crate::coaxial_stacking::set_min_energy;
-use crate::coaxial_stacking::set_coax_energy;
-use crate::coaxial_stacking::{d5_base, d3_base};
-use crate::coaxial_stacking::get_mfe;
+use crate::coaxial_stacking::CoaxialStackingDP;
 
 fn rescale_energy_to_temp(enth: i32, en37: i32, temp_c: f64) -> i32 {
     let t_ref = 310.15; // 37 °C in Kelvin
@@ -227,41 +223,54 @@ impl FuzzyEval {
 
     fn eval_multibranch_loop(&self, segments: &[&[Base]]) -> i32 {
         let n = segments.len(); 
-
         let mut en37 = 0;
         let mut enth = 0;
- 
+        let mut table = CoaxialStackingDP::new(n);
         for i in 0..n {
-            //TODO
             let j = (i + 1) % n; 
             let pair = PairTypeRNA::from((*segments[i].last().unwrap(), segments[j][0]));
             if pair.is_ru() { 
                 en37 += self.terminal_ru_en37;
                 enth += self.terminal_ru_enth;
             }
-            let d5 = segments.get(i)
-                .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(d)));
-            let d3 = segments.get(j)
-                .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(1)));
+
+            //println!("initE {i} | initS {i} {j} {:?}", pair);
+            //let d5 = segments.get(i)
+            //    .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(d)));
+            //let d3 = segments.get(j)
+            //    .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(1)));
+ 
+            let d5 = d5_base(segments[i], false);
+            let d3 = d3_base(segments[j], false);
+            table.set_min_energy(i, d5, pair, d3, &self.energy_tables);
+
+            let slen = segments[j].len() - 2;  
+            if slen <= 1 {
+                let j2 = (i + 2) % n; 
+                let mm = if slen == 1 { segments[i].get(1) } else { None };
+                let npair: PairTypeRNA = (*segments[j].last().unwrap(), segments[j2][0]).into();
+                table.set_coax_energy(
+                    i, j, d5, pair, mm, npair, d3, 
+                    &self.energy_tables, 
+                    self.coaxial_mm_discontious_en37);
+ 
+            }
         }
 
-        let branches = segments.len() as i32;
-        let avg_asym = (2.0f64).min({
-            let mut asy = Vec::new();
-            for i in 0..segments.len() {
-                let l = segments[i].len() as f64;
-                let r = segments[i + 1 % segments.len()].len() as f64;
-                asy.push((l - r).abs());
-            }
-            assert!(asy.len() > 1);
-            asy.iter().sum::<f64>() / asy.len() as f64
-        });
-
-        //en37 += todo!(" ");
-        //enth += todo!(" ");
+        //let branches = segments.len() as i32;
+        //let avg_asym = (2.0f64).min({
+        //    let mut asy = Vec::new();
+        //    for i in 0..segments.len() {
+        //        let l = segments[i].len() as f64;
+        //        let r = segments[i + 1 % segments.len()].len() as f64;
+        //        asy.push((l - r).abs());
+        //    }
+        //    assert!(asy.len() > 1);
+        //    asy.iter().sum::<f64>() / asy.len() as f64
+        //});
 
         if self.temperature == 37.0 { 
-            en37
+            en37 + table.compute_multibranch_mfe(segments)
         } else {
             rescale_energy_to_temp(enth, en37, self.temperature)
         }
@@ -271,8 +280,7 @@ impl FuzzyEval {
         let n = segments.len() - 1; 
         let mut en37 = 0;
         let mut enth = 0;
-        let mut mini_energy = DPTable::new(n);
-        let mut coax_energy = DPTable::new(n);
+        let mut table = CoaxialStackingDP::new(n);
         for i in 0..n {
             let j = i + 1; 
             let pair = PairTypeRNA::from((*segments[i].last().unwrap(), segments[j][0]));
@@ -283,7 +291,7 @@ impl FuzzyEval {
 
             let d5 = d5_base(segments[i], i == 0);
             let d3 = d3_base(segments[j], j == n);
-            set_min_energy(&mut mini_energy, i, d5, pair, d3, &self.energy_tables);
+            table.set_min_energy(i, d5, pair, d3, &self.energy_tables);
 
             if j >= n {
                 continue;
@@ -294,29 +302,15 @@ impl FuzzyEval {
                 let j2 = i + 2; 
                 let mm = if slen == 1 { segments[i].get(1) } else { None };
                 let npair = (*segments[j].last().unwrap(), segments[j2][0]).into();
-                set_coax_energy(&mut coax_energy, 
+                table.set_coax_energy(
                     i, j, d5, pair, mm, npair, d3, 
                     &self.energy_tables, 
                     self.coaxial_mm_discontious_en37);
             }
         }
 
-        for j in 1..n {
-            //println!("Calculating: {i} {j}");
-            get_mfe(&mut mini_energy, &mut coax_energy, 
-                segments[0].len() - 2, 0, 
-                segments[j].len() - 2, j,
-                n);
-        }
-
-        let result = mini_energy.get(0, n - 1, 1, 1)
-            .min(mini_energy.get(0, n - 1, 1, 0))
-            .min(mini_energy.get(0, n - 1, 0, 1))
-            .min(mini_energy.get(0, n - 1, 0, 0));
-
-
         if self.temperature == 37.0 { 
-            en37 + result
+            en37 + table.compute_exterior_mfe(segments)
         } else {
             //TODO
             rescale_energy_to_temp(enth, en37, self.temperature)
@@ -379,6 +373,27 @@ impl EnergyModel for FuzzyEval {
     }
 }
 
+pub fn d5_base(seg: &[Base], exterior: bool) -> Option<&Base> {
+    if exterior && seg.len() >= 2 {
+        seg.get(seg.len() - 2)
+    } else if !exterior && seg.len() >= 3 {
+        seg.get(seg.len() - 2)
+    } else {
+        None
+    }
+}
+
+pub fn d3_base(seg: &[Base], exterior: bool) -> Option<&Base> {
+    if exterior && seg.len() >= 2 {
+        seg.get(1)
+    } else if !exterior && seg.len() >= 3 {
+        seg.get(1)
+    } else {
+        None
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,6 +422,23 @@ mod tests {
         assert_eq!(model.eval_exterior_loop(&binding), -450); //TODO
 
     }
+
+    #[test]
+    fn test_ff_multibranch_evaluation() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let model = FuzzyEval::from_parameter_file(path).unwrap();
+
+        let seg1 = basify("UUG");
+        let seg2 = basify("CUG");
+        let seg3 = basify("CG");
+        let seg4 = basify("CUG");
+
+        let binding: Vec<&[Base]> = vec![&seg1, &seg2, &seg3, &seg4];
+
+        assert_eq!(model.eval_multibranch_loop(&binding), -610); //TODO
+
+    }
+
 
 }
 

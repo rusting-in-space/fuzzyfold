@@ -7,4 +7,4 @@ edition = "2024"
 nohash-hasher = "0.2.0"
 rustc-hash = "2.1.1"
 structure = { path = "../structure" }
-energy_model = { path = "../energy_model" }
+energy = { path = "../energy" }
