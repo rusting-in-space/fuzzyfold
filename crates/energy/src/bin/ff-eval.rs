@@ -21,8 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _: Vec<f64> = parts.map(|s| s.parse().unwrap()).collect();
 
     // ToyModel params (tweak as you like)
-    //let model = ViennaRNA::default();
-    let model = ViennaRNA::from_parameter_file("rna_turner2004.par")?;
+    let model = ViennaRNA::default();
 
     // --- Remaining lines: dot-bracket + energy ---
     for line in lines {

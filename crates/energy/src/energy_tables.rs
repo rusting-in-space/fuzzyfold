@@ -3,9 +3,6 @@ use std::fmt;
 use std::fs::File;
 use std::path::Path;
 use std::io::{BufRead, BufReader};
-
-use strum::EnumCount;
-use strum_macros::EnumCount;
 use rustc_hash::FxHashMap;
 
 use crate::parameter_parsing::ParamFileSection;
@@ -42,8 +39,9 @@ impl fmt::Display for ParamError {
     }
 }
 
-#[derive(Clone, Hash, Copy, Debug, Eq, PartialEq, EnumCount)]
+#[derive(Clone, Hash, Copy, Debug, Eq, PartialEq)]
 pub enum Base { A, C, G, U, N }
+const B: usize = 5; // 5 Base variants for tables.
 
 impl TryFrom<char> for Base {
     type Error = ();
@@ -66,16 +64,9 @@ pub fn basify(seq: &str) -> Vec<Base> {
         .unwrap_or_else(|_| panic!("Invalid character in sequence: {}", seq))
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumCount)]
-pub enum PairTypeRNA {
-    AU,
-    UA,
-    CG,
-    GC,
-    GU,
-    UG,
-    NN,
-}
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PairTypeRNA { AU, UA, CG, GC, GU, UG, NN }
+const P: usize = 7; // 7 Pair variants for tables.
 
 impl From<(Base, Base)> for PairTypeRNA {
     fn from(pair: (Base, Base)) -> Self {
@@ -118,11 +109,10 @@ impl PairTypeRNA {
     }
 }
 
-
-const PAIR_LOOKUP: [[PairTypeRNA; Base::COUNT]; Base::COUNT] = {
+const PAIR_LOOKUP: [[PairTypeRNA; B]; B] = {
     use Base::*;
     use PairTypeRNA::*;
-    let mut table = [[NN; Base::COUNT]; Base::COUNT];
+    let mut table = [[NN; B]; B];
     table[A as usize][U as usize] = AU;
     table[U as usize][A as usize] = UA;
     table[C as usize][G as usize] = CG;
@@ -131,9 +121,6 @@ const PAIR_LOOKUP: [[PairTypeRNA; Base::COUNT]; Base::COUNT] = {
     table[U as usize][G as usize] = UG;
     table
 };
-
-const P: usize = PairTypeRNA::COUNT;
-const B: usize = Base::COUNT;
 
 #[derive(Debug)]
 pub struct EnergyTables {

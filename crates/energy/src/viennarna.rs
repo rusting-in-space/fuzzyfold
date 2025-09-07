@@ -20,12 +20,18 @@ fn rescale_energy_to_temp(enth: i32, en37: i32, temp_c: f64) -> i32 {
     let en37 = en37 as f64;
 
     let dg = enth * (1.0 - dtemp) + en37 * dtemp;
-    //dg.round() as i32
     dg as i32 // No rounding for ViennaRNA compatibility
 }
 
 
-/// WIP: The default ViennaRNA-v2.6 energy model.
+/// The default ViennaRNA-v2.6 energy model.
+///
+/// The current implementation allows different
+/// parameter files, but only the standard
+/// settings (dangle=2, tetraloops, etc.)
+///
+/// Only single-stranded folding is supported.
+///
 #[derive(Debug)]
 pub struct ViennaRNA {
     temperature: f64,
@@ -45,18 +51,22 @@ pub struct ViennaRNA {
     ninio_enth: i32,
     max_ninio: i32,
 
-    duplex_initiation_en37: i32,
-    duplex_initiation_enth: i32,
+    _duplex_initiation_en37: i32,
+    _duplex_initiation_enth: i32,
     terminal_ru_en37: i32,
     terminal_ru_enth: i32,
-
-    symmetry_en37: i32,
-    symmetry_enth: i32,
 
     energy_tables: EnergyTables,
 }
 
 impl ViennaRNA {
+
+    pub fn default() -> Self {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par");
+        ViennaRNA::from_parameter_file(path)
+            .expect("Built-in Turner 2004 parameter file must be valid")
+    }
+
     pub fn from_parameter_file<P: AsRef<Path>>(path: P) -> Result<Self, ParamError> {
         let energy_tables = EnergyTables::from_parameter_file(path)?;
         Ok(ViennaRNA {
@@ -73,17 +83,16 @@ impl ViennaRNA {
             ml_intern_en37: -90,
             ml_intern_enth: -220,
 
+            // NINIO params section -- hardcoded.
             ninio_en37: 60,
             ninio_enth: 320,
             max_ninio: 300,
 
-            duplex_initiation_en37: 410,
-            duplex_initiation_enth: 360,
+            // Misc params section -- hardcoded.
+            _duplex_initiation_en37: 410,
+            _duplex_initiation_enth: 360,
             terminal_ru_en37: 50,
             terminal_ru_enth: 370,
-
-            symmetry_en37: 43,
-            symmetry_enth: 0,
 
             energy_tables,
         })
@@ -297,20 +306,12 @@ impl ViennaRNA {
             enth += h;
         }
  
-        let branches = segments.len() as i32;
-        //let avg_asym = (2.0f64).min({
-        //    let mut asy = Vec::new();
-        //    for i in 0..segments.len() {
-        //        let l = segments[i].len() as f64;
-        //        let r = segments[i + 1 % segments.len()].len() as f64;
-        //        asy.push((l - r).abs());
-        //    }
-        //    assert!(asy.len() > 1);
-        //    asy.iter().sum::<f64>() / asy.len() as f64
-        //});
-
-        en37 += self.ml_closing_en37 + self.ml_intern_en37 * branches;
-        enth += self.ml_closing_enth + self.ml_intern_enth * branches;
+        en37 += self.ml_base_en37 
+             + self.ml_closing_en37 
+             + self.ml_intern_en37 * n as i32;
+        enth += self.ml_base_enth 
+             + self.ml_closing_enth 
+             + self.ml_intern_enth * n as i32;
 
         if self.temperature == 37.0 { 
             en37
@@ -464,8 +465,7 @@ mod tests {
 
     #[test]
     fn test_vrna_hairpin_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         assert_eq!(model.hairpin(&basify("GAAAC")).unwrap(), 540);
         assert_eq!(model.hairpin(&basify("CCGAGG")).unwrap(), 350);
@@ -493,8 +493,7 @@ mod tests {
 
     #[test]
     fn test_vrna_stacking_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         assert_eq!(model.interior(&basify("CG"), &basify("CG")), -240);
         assert_eq!(model.interior(&basify("AC"), &basify("GU")), -220);
@@ -503,8 +502,7 @@ mod tests {
 
     #[test]
     fn test_vrna_int11_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         assert_eq!(model.interior(&basify("CCG"), &basify("CGG")), 50);
         assert_eq!(model.interior(&basify("CAG"), &basify("CAG")), 90);
@@ -515,8 +513,7 @@ mod tests {
 
     #[test]
     fn test_vrna_int21_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         assert_eq!(model.interior(&basify("CACG"), &basify("CGG")), 110);
         assert_eq!(model.interior(&basify("CAAG"), &basify("CAG")), 230);
@@ -533,8 +530,7 @@ mod tests {
 
     #[test]
     fn test_vrna_bulge_1_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         assert_eq!(model.interior(&basify("CAG"), &basify("CG")), 140);
         assert_eq!(model.interior(&basify("AAU"), &basify("AU")), 270);
@@ -555,8 +551,7 @@ mod tests {
 
     #[test]
     fn test_vrna_bulge_2_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         assert_eq!(model.interior(&basify("CAAG"), &basify("CG")), 280);
         assert_eq!(model.interior(&basify("AAAU"), &basify("AU")), 380);
@@ -577,8 +572,7 @@ mod tests {
 
     #[test]
     fn test_vrna_bulge_n_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         assert_eq!(model.interior(&basify("CAAAAAAG"), &basify("CG")), 440);
         assert_eq!(model.interior(&basify("CAAAAAAAAG"), &basify("CG")), 470);
@@ -586,8 +580,7 @@ mod tests {
 
     #[test]
     fn test_vrna_multibranch() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         let seg1 = &basify("AAAA");
         let seg2 = &basify("AAA");
@@ -611,8 +604,7 @@ mod tests {
 
     #[test]
     fn test_vrna_exterior_single_branch() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         let seg1 = &basify("AUG");
         let seg2 = &basify("CUG");
@@ -637,8 +629,7 @@ mod tests {
 
     #[test]
     fn test_vrna_exterior_single_branch_t25() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let mut model = ViennaRNA::from_parameter_file(path).unwrap();
+        let mut model = ViennaRNA::default();
         model.temperature = 25.0;
 
         let seg1 = &basify("AUG");
@@ -670,8 +661,7 @@ mod tests {
 
     #[test]
     fn test_vrna_exterior_two_branches() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         let seg1 = &basify("AUG");
         let seg2 = &basify("CUG");
@@ -706,8 +696,7 @@ mod tests {
 
     #[test]
     fn test_vrna_exterior_three_branches() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         let seg1 = &basify("AUG");
         let seg2 = &basify("CUG");
@@ -727,8 +716,7 @@ mod tests {
  
     #[test]
     fn test_evaluations() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
 
         let seq = "GAAAAC";
         let dbr = "(....)";
@@ -744,9 +732,6 @@ mod tests {
         let dbr = "(((((...)))))";
         let e37 = -170;
         assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
-
-
-
     }
 }
 

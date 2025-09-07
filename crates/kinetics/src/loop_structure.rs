@@ -252,8 +252,7 @@ mod tests {
         let struct_0 = "...........";
         let struct_1 = ".(....)....";
 
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
-        let model = ViennaRNA::from_parameter_file(path).unwrap();
+        let model = ViennaRNA::default();
         let sequence = basify(sequence);
         let struct_0 = PairTable::try_from(struct_0).expect("valid");
         let mut ls = LoopStructure::try_from((&sequence[..], &struct_0, &model)).expect("bla");

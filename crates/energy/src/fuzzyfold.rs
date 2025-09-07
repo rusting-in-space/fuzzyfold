@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_ff_hairpin_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par");
         let model = FuzzyEval::from_parameter_file(path).unwrap();
 
         assert_eq!(model.eval_hairpin_loop(&basify("GAAAC")), 540);
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_ff_exterior_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par");
         let model = FuzzyEval::from_parameter_file(path).unwrap();
 
         let seg1 = basify("UUG");
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_ff_multibranch_evaluation() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/rna_turner2004.par");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par");
         let model = FuzzyEval::from_parameter_file(path).unwrap();
 
         let seg1 = basify("UUG");
