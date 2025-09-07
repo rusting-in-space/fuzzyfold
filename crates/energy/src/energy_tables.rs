@@ -13,6 +13,7 @@ pub enum ParamError {
     Io(std::io::Error),
     Parse(String),
     MissingValue(&'static str, usize),
+    InvalidLength(&'static str, usize, usize), 
     InvalidHairpinSize(usize),
 }
 
@@ -31,6 +32,13 @@ impl fmt::Display for ParamError {
             ParamError::Parse(msg) => write!(f, "Parse error: {}", msg),
             ParamError::MissingValue(table, index) => {
                 write!(f, "Missing value in parameter table '{}' at index {}", table, index)
+            }
+            ParamError::InvalidLength(table, expected, got) => {
+                write!(
+                    f,
+                    "Invalid length for parameter table '{}': expected {}, got {}",
+                    table, expected, got
+                )
             }
             ParamError::InvalidHairpinSize(n) => {
                 write!(f, "Invalid hairpin size: {}", n)
@@ -122,6 +130,32 @@ const PAIR_LOOKUP: [[PairTypeRNA; B]; B] = {
     table
 };
 
+#[derive(Debug, Default)]
+pub struct MLParams {
+    pub base_en37: i32,
+    pub base_enth: i32,
+    pub closing_en37: i32,
+    pub closing_enth: i32,
+    pub intern_en37: i32,
+    pub intern_enth: i32,
+}
+
+impl MLParams {
+    pub fn from_slice(slice: &[i32]) -> Result<Self, ParamError> {
+        if slice.len() != 6 {
+            return Err(ParamError::InvalidLength("ml_params", 6, slice.len()));
+        }
+        Ok(Self {
+            base_en37: slice[0],
+            base_enth: slice[1],
+            closing_en37: slice[2],
+            closing_enth: slice[3],
+            intern_en37: slice[4],
+            intern_enth: slice[5],
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct EnergyTables {
     pub stack:            [[Option<i32>; P]; P],
@@ -159,7 +193,7 @@ pub struct EnergyTables {
     pub interior:            [Option<i32>; 31],
     pub interior_enthalpies: [Option<i32>; 31],
 
-    pub ml_params: [Option<i32>; 6],
+    pub ml_params: MLParams,
     pub ninio: [Option<i32>; 3],
     pub misc: [Option<i32>; 4],
 
@@ -213,7 +247,7 @@ impl EnergyTables {
             bulge_enthalpies: [None; 31],
             interior: [None; 31],
             interior_enthalpies: [None; 31],
-            ml_params: [None; 6],
+            ml_params: MLParams::default(),
             ninio: [None; 3],
             misc: [None; 4],
 

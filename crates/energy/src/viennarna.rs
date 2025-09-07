@@ -39,14 +39,6 @@ pub struct ViennaRNA {
 
     lxc37: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
 
-    // ML params section -- hardcoded.
-    ml_base_en37: i32,
-    ml_base_enth: i32,
-    ml_closing_en37: i32,
-    ml_closing_enth: i32,
-    ml_intern_en37: i32,
-    ml_intern_enth: i32,
-
     ninio_en37: i32,
     ninio_enth: i32,
     max_ninio: i32,
@@ -75,14 +67,6 @@ impl ViennaRNA {
 
             lxc37: 107.856, //TODO
                             
-            // ML params section -- hardcoded.
-            ml_base_en37: 0,
-            ml_base_enth: 0,
-            ml_closing_en37: 930,
-            ml_closing_enth: 3000,
-            ml_intern_en37: -90,
-            ml_intern_enth: -220,
-
             // NINIO params section -- hardcoded.
             ninio_en37: 60,
             ninio_enth: 320,
@@ -306,12 +290,12 @@ impl ViennaRNA {
             enth += h;
         }
  
-        en37 += self.ml_base_en37 
-             + self.ml_closing_en37 
-             + self.ml_intern_en37 * n as i32;
-        enth += self.ml_base_enth 
-             + self.ml_closing_enth 
-             + self.ml_intern_enth * n as i32;
+        en37 += self.energy_tables.ml_params.base_en37 
+             + self.energy_tables.ml_params.closing_en37
+             + self.energy_tables.ml_params.intern_en37 * n as i32;
+        enth += self.energy_tables.ml_params.base_enth
+             + self.energy_tables.ml_params.closing_enth
+             + self.energy_tables.ml_params.intern_enth * n as i32;
 
         if self.temperature == 37.0 { 
             en37

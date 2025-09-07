@@ -330,7 +330,34 @@ impl_loop_parser!(Bulge, bulge);
 impl_loop_parser!(BulgeEnthalpies, bulge_enthalpies);
 impl_loop_parser!(Interior, interior);
 impl_loop_parser!(InteriorEnthalpies, interior_enthalpies);
-impl_loop_parser!(MLParams, ml_params);
+
+macro_rules! impl_misc_parser {
+    ($struct_name:ident, $field:ident, $ty:ty) => {
+        #[derive(Default, Debug)]
+        pub struct $struct_name {
+            base: usize,
+        }
+
+        impl SectionParser for $struct_name {
+            fn parse_line(&mut self, line: &str, tables: &mut EnergyTables) {
+                let slice: Vec<i32> = line
+                    .split_whitespace()
+                    .map(|token| {
+                        token.parse::<i32>().expect(&format!(
+                                "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                                stringify!($field), line, token
+                        ))
+                    })
+                .collect();
+
+                tables.$field = <$ty>::from_slice(&slice)
+                    .expect(&format!("invalid values in {}", stringify!($field)));
+            }
+        }
+    };
+}
+
+impl_misc_parser!(MLParams, ml_params, crate::energy_tables::MLParams);
 impl_loop_parser!(Ninio, ninio);
 impl_loop_parser!(Misc, misc);
 
