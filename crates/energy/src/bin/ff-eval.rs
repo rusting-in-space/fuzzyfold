@@ -33,7 +33,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let pt = PairTable::try_from(db)?;
         let myen = model.energy_of_structure(&seq, &pt);
-        println!("{} {} -> {}", db, energy, myen);
+
+        let mark = if (energy * 100f64).round() as i32 != myen { "*" } else { "" };
+        if mark == "*" {
+        println!("{} {} -> {} {}", db, energy, myen as f64 / 100.0, mark);
+        }
     }
 
     Ok(())
