@@ -350,7 +350,7 @@ macro_rules! impl_misc_parser {
                     })
                 .collect();
 
-                tables.$field = <$ty>::from_slice(&slice)
+                tables.$field = <$ty>::from_vrna_param_slice(&slice)
                     .expect(&format!("invalid values in {}", stringify!($field)));
             }
         }
@@ -358,8 +358,8 @@ macro_rules! impl_misc_parser {
 }
 
 impl_misc_parser!(MLParams, ml_params, crate::energy_tables::MLParams);
-impl_loop_parser!(Ninio, ninio);
-impl_loop_parser!(Misc, misc);
+impl_misc_parser!(Ninio, ninio, crate::energy_tables::NINIO);
+impl_misc_parser!(Misc, misc, crate::energy_tables::Misc);
 
 macro_rules! impl_sequence_parser {
     ($struct_name:ident, $field:ident) => {

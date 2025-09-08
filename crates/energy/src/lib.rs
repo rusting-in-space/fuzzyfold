@@ -5,13 +5,13 @@ mod loop_decomposition;
 mod energy_tables;
 mod energy_model;
 mod viennarna;
-mod fuzzyfold;
+mod fuzzyeval;
 
 pub use loop_decomposition::*;
 pub use energy_tables::*;
 pub use energy_model::*;
 pub use viennarna::*;
-pub use fuzzyfold::*;
+pub use fuzzyeval::*;
 
 
 

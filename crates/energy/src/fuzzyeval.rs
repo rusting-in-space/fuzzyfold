@@ -30,12 +30,12 @@ pub struct FuzzyEval {
     temperature: f64,
     min_hp_size: usize,
 
-    duplex_initiation_en37: i32,
-    duplex_initiation_enth: i32,
+    _duplex_initiation_en37: i32,
+    _duplex_initiation_enth: i32,
     terminal_ru_en37: i32,
     terminal_ru_enth: i32,
-    symmetry_en37: i32,
-    symmetry_enth: i32,
+    _symmetry_en37: i32,
+    _symmetry_enth: i32,
 
     coaxial_mm_discontious_en37: i32,
     coaxial_mm_discontious_enth: i32,
@@ -54,12 +54,12 @@ impl FuzzyEval {
             temperature: 37.0,
             min_hp_size: 3,
 
-            duplex_initiation_en37: 410,
-            duplex_initiation_enth: 360,
+            _duplex_initiation_en37: 410,
+            _duplex_initiation_enth: 360,
             terminal_ru_en37: 50,
             terminal_ru_enth: 370,
-            symmetry_en37: 43,
-            symmetry_enth: 0,
+            _symmetry_en37: 43,
+            _symmetry_enth: 0,
 
             coaxial_mm_discontious_en37: -210,
             coaxial_mm_discontious_enth: -846, // +/- 2.75

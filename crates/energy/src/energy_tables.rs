@@ -72,6 +72,19 @@ pub fn basify(seq: &str) -> Vec<Base> {
         .unwrap_or_else(|_| panic!("Invalid character in sequence: {}", seq))
 }
 
+const PAIR_LOOKUP: [[PairTypeRNA; B]; B] = {
+    use Base::*;
+    use PairTypeRNA::*;
+    let mut table = [[NN; B]; B];
+    table[A as usize][U as usize] = AU;
+    table[U as usize][A as usize] = UA;
+    table[C as usize][G as usize] = CG;
+    table[G as usize][C as usize] = GC;
+    table[G as usize][U as usize] = GU;
+    table[U as usize][G as usize] = UG;
+    table
+};
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PairTypeRNA { AU, UA, CG, GC, GU, UG, NN }
 const P: usize = 7; // 7 Pair variants for tables.
@@ -117,19 +130,6 @@ impl PairTypeRNA {
     }
 }
 
-const PAIR_LOOKUP: [[PairTypeRNA; B]; B] = {
-    use Base::*;
-    use PairTypeRNA::*;
-    let mut table = [[NN; B]; B];
-    table[A as usize][U as usize] = AU;
-    table[U as usize][A as usize] = UA;
-    table[C as usize][G as usize] = CG;
-    table[G as usize][C as usize] = GC;
-    table[G as usize][U as usize] = GU;
-    table[U as usize][G as usize] = UG;
-    table
-};
-
 #[derive(Debug, Default)]
 pub struct MLParams {
     pub base_en37: i32,
@@ -141,7 +141,7 @@ pub struct MLParams {
 }
 
 impl MLParams {
-    pub fn from_slice(slice: &[i32]) -> Result<Self, ParamError> {
+    pub fn from_vrna_param_slice(slice: &[i32]) -> Result<Self, ParamError> {
         if slice.len() != 6 {
             return Err(ParamError::InvalidLength("ml_params", 6, slice.len()));
         }
@@ -155,6 +155,49 @@ impl MLParams {
         })
     }
 }
+
+#[derive(Debug, Default)]
+pub struct NINIO {
+    pub en37: i32,
+    pub enth: i32,
+    pub max: i32,
+}
+
+impl NINIO {
+    pub fn from_vrna_param_slice(slice: &[i32]) -> Result<Self, ParamError> {
+        if slice.len() != 3 {
+            return Err(ParamError::InvalidLength("NINIO", 6, slice.len()));
+        }
+        Ok(Self {
+            en37: slice[0],
+            enth: slice[1],
+            max: slice[2],
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Misc {
+    pub duplex_initiation_en37: i32,
+    pub duplex_initiation_enth: i32,
+    pub terminal_ru_en37: i32,
+    pub terminal_ru_enth: i32,
+}
+
+impl Misc {
+    pub fn from_vrna_param_slice(slice: &[i32]) -> Result<Self, ParamError> {
+        if slice.len() != 4 {
+            return Err(ParamError::InvalidLength("Misc", 6, slice.len()));
+        }
+        Ok(Self {
+            duplex_initiation_en37: slice[0],
+            duplex_initiation_enth: slice[1],
+            terminal_ru_en37: slice[2],
+            terminal_ru_enth: slice[3],
+        })
+    }
+}
+
 
 #[derive(Debug)]
 pub struct EnergyTables {
@@ -194,8 +237,8 @@ pub struct EnergyTables {
     pub interior_enthalpies: [Option<i32>; 31],
 
     pub ml_params: MLParams,
-    pub ninio: [Option<i32>; 3],
-    pub misc: [Option<i32>; 4],
+    pub ninio: NINIO,
+    pub misc: Misc,
 
     pub hairpin_sequences: FxHashMap<Vec<Base>, (i32, i32)>,
 }
@@ -248,8 +291,8 @@ impl EnergyTables {
             interior: [None; 31],
             interior_enthalpies: [None; 31],
             ml_params: MLParams::default(),
-            ninio: [None; 3],
-            misc: [None; 4],
+            ninio: NINIO::default(),
+            misc: Misc::default(),
 
             hairpin_sequences: FxHashMap::default(),
         }

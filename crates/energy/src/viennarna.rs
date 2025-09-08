@@ -39,15 +39,6 @@ pub struct ViennaRNA {
 
     lxc37: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
 
-    ninio_en37: i32,
-    ninio_enth: i32,
-    max_ninio: i32,
-
-    _duplex_initiation_en37: i32,
-    _duplex_initiation_enth: i32,
-    terminal_ru_en37: i32,
-    terminal_ru_enth: i32,
-
     energy_tables: EnergyTables,
 }
 
@@ -68,15 +59,15 @@ impl ViennaRNA {
             lxc37: 107.856, //TODO
                             
             // NINIO params section -- hardcoded.
-            ninio_en37: 60,
-            ninio_enth: 320,
-            max_ninio: 300,
+            //ninio_en37: 60,
+            //ninio_enth: 320,
+            //ninio_max: 300,
 
             // Misc params section -- hardcoded.
-            _duplex_initiation_en37: 410,
-            _duplex_initiation_enth: 360,
-            terminal_ru_en37: 50,
-            terminal_ru_enth: 370,
+            //_duplex_initiation_en37: 410,
+            //_duplex_initiation_enth: 360,
+            //terminal_ru_en37: 50,
+            //terminal_ru_enth: 370,
 
             energy_tables,
         })
@@ -116,8 +107,8 @@ impl ViennaRNA {
             | PairTypeRNA::AU | PairTypeRNA::UA
             | PairTypeRNA::NN
         ) { 
-            en37 += self.terminal_ru_en37;
-            enth += self.terminal_ru_enth;
+            en37 += self.energy_tables.misc.terminal_ru_en37;
+            enth += self.energy_tables.misc.terminal_ru_enth;
         } else if n > 3 {
             en37 += self.energy_tables.mismatch_hairpin[
                 PairTypeRNA::from((seq[0], seq[n+1])) as usize][ 
@@ -214,8 +205,14 @@ impl ViennaRNA {
             ),
             (l, 2) | (2, l) => { // General Bulge case
                 let n = l - 2;
-                let (pg1, th1) = if is_ru_end(outer) { (self.terminal_ru_en37, self.terminal_ru_enth) } else { (0, 0) };
-                let (pg2, th2) = if is_ru_end(inner) { (self.terminal_ru_en37, self.terminal_ru_enth) } else { (0, 0) };
+                let (pg1, th1) = if is_ru_end(outer) {(
+                    self.energy_tables.misc.terminal_ru_en37, 
+                    self.energy_tables.misc.terminal_ru_enth) 
+                } else { (0, 0) };
+                let (pg2, th2) = if is_ru_end(inner) {(
+                    self.energy_tables.misc.terminal_ru_en37, 
+                    self.energy_tables.misc.terminal_ru_enth) 
+                } else { (0, 0) };
                 if n <= 30 {(
                     self.energy_tables.bulge[n].unwrap() + pg1 + pg2,
                     self.energy_tables.bulge_enthalpies[n].unwrap() + th1 + th2
@@ -228,8 +225,14 @@ impl ViennaRNA {
             },
             (lfwd, lrev) => { 
                 let n = (lfwd as isize - lrev as isize).abs() as usize;
-                let (pg1, th1) = if is_ru_end(outer) { (self.terminal_ru_en37, self.terminal_ru_enth) } else { (0, 0) };
-                let (pg2, th2) = if is_ru_end(inner) { (self.terminal_ru_en37, self.terminal_ru_enth) } else { (0, 0) };
+                let (pg1, th1) = if is_ru_end(outer) {(
+                    self.energy_tables.misc.terminal_ru_en37, 
+                    self.energy_tables.misc.terminal_ru_enth) 
+                } else { (0, 0) };
+                let (pg2, th2) = if is_ru_end(inner) {(
+                    self.energy_tables.misc.terminal_ru_en37, 
+                    self.energy_tables.misc.terminal_ru_enth) 
+                } else { (0, 0) };
 
                 if n <= 30 {(
                     self.energy_tables.interior[n].unwrap() + pg1 + pg2,
@@ -264,8 +267,8 @@ impl ViennaRNA {
             let j = (i + 1) % n; 
             let pair = PairTypeRNA::from((*segments[i].last().unwrap(), segments[j][0]));
             if is_ru_end(pair) { 
-                en37 += self.terminal_ru_en37;
-                enth += self.terminal_ru_enth;
+                en37 += self.energy_tables.misc.terminal_ru_en37;
+                enth += self.energy_tables.misc.terminal_ru_enth;
             }
             let d5 = segments.get(i)
                 .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(d)));
@@ -317,8 +320,8 @@ impl ViennaRNA {
             
             let pair = (*segments[i].last().unwrap(), segments[j][0]).into();
             if is_ru_end(pair) { 
-                en37 += self.terminal_ru_en37;
-                enth += self.terminal_ru_enth;
+                en37 += self.energy_tables.misc.terminal_ru_en37;
+                enth += self.energy_tables.misc.terminal_ru_enth;
             }
 
             let d5 = segments.get(i)
@@ -350,7 +353,8 @@ impl ViennaRNA {
         }
     }
 
-    fn energy_of_pair(&self, 
+    /// A potential helper function to evaluate the energy of a base-pair move.
+    fn _energy_of_pair(&self, 
         sequence: &[Base], 
         structure: &PairTable, 
         i: usize,
