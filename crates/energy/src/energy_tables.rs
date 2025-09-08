@@ -226,8 +226,8 @@ pub struct EnergyTables {
     pub int11_enthalpies: Box<[[[[Option<i32>; B]; B]; P]; P]>,
     pub int21:            Box<[[[[[Option<i32>; B]; B]; B]; P]; P]>,
     pub int21_enthalpies: Box<[[[[[Option<i32>; B]; B]; B]; P]; P]>,
-    pub int22:            Box<[[[[[[Option<i32>; B]; B]; B]; B]; P]; P]>,
-    pub int22_enthalpies: Box<[[[[[[Option<i32>; B]; B]; B]; B]; P]; P]>,
+    pub int22:            Box<[[[[[[Option<i32>; B - 1]; B - 1]; B - 1]; B - 1]; P - 1]; P - 1]>,
+    pub int22_enthalpies: Box<[[[[[[Option<i32>; B - 1]; B - 1]; B - 1]; B - 1]; P - 1]; P - 1]>,
 
     pub hairpin:            [Option<i32>; 31],
     pub hairpin_enthalpies: [Option<i32>; 31],
@@ -249,7 +249,7 @@ macro_rules! section_match {
             $(
                 ParamFileSection::$struct(ref mut s) => s.parse_line($line, &mut $tables),
             )+
-                _ => { },
+                _ => { panic!("Couldn't match line \"{}\"", $line) },
         }
     };
 }
@@ -281,8 +281,8 @@ impl EnergyTables {
             int11_enthalpies: Box::new([[[[None; B]; B]; P]; P]),
             int21:            Box::new([[[[[None; B]; B]; B]; P]; P]),
             int21_enthalpies: Box::new([[[[[None; B]; B]; B]; P]; P]),
-            int22:            Box::new([[[[[[None; B]; B]; B]; B]; P]; P]),
-            int22_enthalpies: Box::new([[[[[[None; B]; B]; B]; B]; P]; P]),            
+            int22:            Box::new([[[[[[None; B - 1]; B - 1]; B - 1]; B - 1]; P - 1]; P - 1]),
+            int22_enthalpies: Box::new([[[[[[None; B - 1]; B - 1]; B - 1]; B - 1]; P - 1]; P - 1]),            
 
             hairpin: [None; 31],
             hairpin_enthalpies: [None; 31],
@@ -327,6 +327,8 @@ impl EnergyTables {
                     }
                 }
                 continue;
+            } else if line.starts_with("#") {
+                continue;
             }
 
             section_match!(section, line, tables, 
@@ -352,6 +354,8 @@ impl EnergyTables {
                 Int11Enthalpies,
                 Int21,
                 Int21Enthalpies,
+                Int22,
+                Int22Enthalpies,
                 Hairpin,
                 HairpinEnthalpies,
                 Bulge,
@@ -478,6 +482,32 @@ mod tests {
         assert_eq!(tables.int21[CG as usize][CG as usize][N as usize][N as usize][N as usize], Some(230));
         assert_eq!(tables.int21[CG as usize][CG as usize][N as usize][N as usize][A as usize], Some(230));
     }
+
+    #[test]
+    fn test_parse_int22() {
+        use Base::*;
+        use PairTypeRNA::*;
+        let dummy = r#"
+
+# int22
+   120   160    20   160    /* CG,CG,A,A,A */
+   110   150    20   150    /* CG,CG,A,A,C */
+    20    60   -70    60    /* CG,CG,A,A,G */
+   110   150    20   150    /* CG,CG,A,A,U */
+   160   200    60   200    /* CG,CG,A,C,A */
+   140   180   110   180    /* CG,CG,A,C,C */
+   160   200    60   200    /* CG,CG,A,C,G */
+   130   170    90   170    /* CG,CG,A,C,U */
+"#;
+
+        let cursor = Cursor::new(dummy);
+        let tables = EnergyTables::from_reader(cursor).unwrap();
+
+        // Check one of the parsed entries
+        assert_eq!(tables.int22[CG as usize][CG as usize][A as usize][A as usize][A as usize][A as usize], Some(120));
+        assert_eq!(tables.int22[CG as usize][CG as usize][A as usize][A as usize][A as usize][C as usize], Some(160));
+    }
+
 
     #[test]
     fn test_parse_loops() {

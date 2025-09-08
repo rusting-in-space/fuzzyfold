@@ -243,7 +243,7 @@ impl_int21_parser!(Int21Enthalpies, int21_enthalpies);
 
 macro_rules! impl_int22_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Default, Debug)]
+        #[derive(Debug)]
         pub struct $struct_name {
             outer: usize,
             inner: usize,
@@ -252,10 +252,22 @@ macro_rules! impl_int22_parser {
             mm35: usize,
         }
 
+        impl Default for $struct_name {
+            fn default() -> Self {
+                Self {
+                    outer: 0,
+                    inner: 0,
+                    mm55: 1,
+                    mm53: 1,
+                    mm35: 1,
+                }
+            }
+        }
+
         impl SectionParser for $struct_name {
             fn parse_line(&mut self, line: &str, tables: &mut EnergyTables) {
                 for (mm33, token) in line.split_whitespace()
-                    .take(PARAM_FILE_MM_ORDER.len()).enumerate() 
+                    .take(PARAM_FILE_MM_ORDER.len() - 1).enumerate() 
                 {
                     let val = token.parse::<i32>().expect(&format!(
                             "Failed to parse integer in {} while parsing line {:?}, token {:?}",
@@ -268,25 +280,25 @@ macro_rules! impl_int22_parser {
                     let i3 = PARAM_FILE_MM_ORDER[self.mm55] as usize;
                     let i4 = PARAM_FILE_MM_ORDER[self.mm53] as usize;
                     let i5 = PARAM_FILE_MM_ORDER[self.mm35] as usize;
-                    let i6 = PARAM_FILE_MM_ORDER[mm33] as usize;
+                    let i6 = PARAM_FILE_MM_ORDER[mm33 + 1] as usize;
                     tables.$field[i1][i2][i3][i4][i5][i6] = Some(val);
                 }
                 self.mm35 += 1;
                 if self.mm35 == PARAM_FILE_MM_ORDER.len() {
+                    self.mm35 = 1;
                     self.mm53 += 1;
-                    self.mm35 = 0;
                 }
                 if self.mm53 == PARAM_FILE_MM_ORDER.len() {
+                    self.mm53 = 1;
                     self.mm55 += 1;
-                    self.mm53 = 0;
                 }
                 if self.mm55 == PARAM_FILE_MM_ORDER.len() {
-                    self.mm55 = 0;
+                    self.mm55 = 1;
                     self.inner += 1;
                 } 
-                if self.inner == PARAM_FILE_PAIR_ORDER.len() {
-                    self.outer += 1;
+                if self.inner == PARAM_FILE_PAIR_ORDER.len() - 1 {
                     self.inner = 0;
+                    self.outer += 1;
                 }
             }
         }
