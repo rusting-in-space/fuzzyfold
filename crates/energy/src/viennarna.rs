@@ -11,18 +11,8 @@ use crate::EnergyTables;
 use crate::ParamError;
 use crate::EnergyModel;
 
-fn rescale_energy_to_temp(enth: i32, en37: i32, temp_c: f64) -> i32 {
-    let t_ref = 310.15; // 37 °C in Kelvin
-    let t = temp_c + 273.15;
-    let dtemp = t / t_ref;
-
-    let enth = enth as f64;
-    let en37 = en37 as f64;
-
-    let dg = enth * (1.0 - dtemp) + en37 * dtemp;
-    dg as i32 // No rounding for ViennaRNA compatibility
-}
-
+const K0: f64 = 273.15;
+const K37: f64 = 310.15; // 37 °C in Kelvin
 
 /// The default ViennaRNA-v2.6 energy model.
 ///
@@ -34,11 +24,9 @@ fn rescale_energy_to_temp(enth: i32, en37: i32, temp_c: f64) -> i32 {
 ///
 #[derive(Debug)]
 pub struct ViennaRNA {
-    temperature: f64,
     min_hp_size: usize,
-
-    lxc37: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
-
+    temperature: f64,
+    lxc: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
     energy_tables: EnergyTables,
 }
 
@@ -53,81 +41,67 @@ impl ViennaRNA {
     pub fn from_parameter_file<P: AsRef<Path>>(path: P) -> Result<Self, ParamError> {
         let energy_tables = EnergyTables::from_parameter_file(path)?;
         Ok(ViennaRNA {
-            temperature: 37.0,
             min_hp_size: 3,
-
-            lxc37: 107.856, //TODO
-                            
-            // NINIO params section -- hardcoded.
-            //ninio_en37: 60,
-            //ninio_enth: 320,
-            //ninio_max: 300,
-
-            // Misc params section -- hardcoded.
-            //_duplex_initiation_en37: 410,
-            //_duplex_initiation_enth: 360,
-            //terminal_ru_en37: 50,
-            //terminal_ru_enth: 370,
-
+            temperature: 37.0,
+            lxc: 107.856, //TODO
             energy_tables,
         })
     }
+    
+    pub fn set_temperature(&mut self, temperature: f64) {
 
-    fn hairpin(&self, seq: &[Base]) -> Result<i32, ParamError> {
+        if (self.temperature - temperature).abs() < f64::EPSILON {
+            return;
+        }
+
+        let old_temp = self.temperature + K0;
+        let new_temp = temperature + K0;
+        let temp_change = new_temp / old_temp;
+        self.temperature = temperature;
+        self.lxc *= temp_change;
+        self.energy_tables.rescale(temp_change);
+    }
+
+    fn hairpin(&self, seq: &[Base]) -> i32 {
+        let et = &self.energy_tables;
         let n = seq.len() - 2;
         if n < self.min_hp_size {
-            return Err(ParamError::InvalidHairpinSize(n));
+            panic!("Invalid hairpin size {n}");
+        }
+        let closing = PairTypeRNA::from((seq[0], *seq.last().unwrap()));
+
+        if !closing.can_pair() {
+            eprintln!("Invalid base-pair: {}", closing);
         }
 
         // Special hairpin energies
         if seq.len() <= 6 { 
-            if let Some((en37, enth)) = self.energy_tables.hairpin_sequences.get(seq).copied() {
-                if self.temperature == 37.0 { 
-                    return Ok(en37);
-                } else {
-                    return Ok(rescale_energy_to_temp(enth, en37, self.temperature))
-                }
+            if let Some((en, _)) = et.hairpin_sequences.get(seq).copied() {
+                return en;
             }
         }
 
         // Initiation terms
-        let (mut en37, mut enth) = if n <= 30 {
-            (self.energy_tables.hairpin[n].ok_or(ParamError::MissingValue("hairpin", n))?,
-            self.energy_tables.hairpin_enthalpies[n].ok_or(ParamError::MissingValue("hairpin", n))?)
+        let mut en = if n <= 30 {
+            et.hairpin[n].expect("from file")
         } else {
-            (self.energy_tables.hairpin[30].ok_or(ParamError::MissingValue("hairpin", 30))?
-                + (self.lxc37 * (n as f64).ln() / 30.) as i32,
-             self.energy_tables.hairpin_enthalpies[30].ok_or(ParamError::MissingValue("hairpin", 30))?
-                + (self.lxc37 * (n as f64).ln() / 30.) as i32)
+            et.hairpin[30].expect("from file")
+            + (self.lxc * ((n as f64) / 30.).ln()) as i32
         };
 
         // NOTE: double check NN desrciption if this is indeed the correct way.
-        if n == 3 && matches!((seq[0], *seq.last().unwrap()).into()
+        if n == 3 && matches!(closing
             , PairTypeRNA::GU | PairTypeRNA::UG 
             | PairTypeRNA::AU | PairTypeRNA::UA
-            | PairTypeRNA::NN
-        ) { 
-            en37 += self.energy_tables.misc.terminal_ru_en37;
-            enth += self.energy_tables.misc.terminal_ru_enth;
+            | PairTypeRNA::NN) { 
+            en += et.misc.terminal_ru_en37;
         } else if n > 3 {
-            en37 += self.energy_tables.mismatch_hairpin[
-                PairTypeRNA::from((seq[0], seq[n+1])) as usize][ 
-                    seq[1] as usize][
-                    seq[n] as usize
-                    ].ok_or(ParamError::MissingValue("mismatch_hairpin", n))?;
-
-            enth += self.energy_tables.mismatch_hairpin_enthalpies[
-                PairTypeRNA::from((seq[0], seq[n+1])) as usize][ 
-                    seq[1] as usize][
-                    seq[n] as usize
-                    ].ok_or(ParamError::MissingValue("mismatch_hairpin", n))?;
+            en += et.mismatch_hairpin
+                [closing as usize]
+                [seq[1] as usize]
+                [seq[n] as usize].expect("from file");
         }
-
-        if self.temperature == 37.0 { 
-            Ok(en37)
-        } else {
-            Ok(rescale_energy_to_temp(enth, en37, self.temperature))
-        }
+        en
     }
 
     /// g37 = g37 AU end-penalty + sum(37-stacking)
@@ -139,232 +113,144 @@ impl ViennaRNA {
             , PairTypeRNA::GU | PairTypeRNA::UG 
             | PairTypeRNA::AU | PairTypeRNA::UA | PairTypeRNA::NN);
 
-        let (en37, enth) = match (fwdseq.len(), revseq.len()) {
-            (2, 2) => (
-                self.energy_tables.stack
-                [outer as usize][inner as usize].expect("from file")
-                ,
-                self.energy_tables.stack_enthalpies
-                [outer as usize][inner as usize].expect("from file")
-            ),
-            (3, 2) | (2, 3) => (//NOTE: SpecialC if C adjacent to paired C missing!
+        match (fwdseq.len(), revseq.len()) {
+            (2, 2) => 
+                self.energy_tables.stack[outer as usize][inner as usize]
+                .expect("from file"),
+            (3, 2) | (2, 3) => //NOTE: SpecialC if C adjacent to paired C missing!
                 self.energy_tables.bulge[1].unwrap() + 
-                self.energy_tables.stack
-                [outer as usize][inner as usize]
-                .expect("from file")
-                ,
-                self.energy_tables.bulge_enthalpies[1].unwrap() +
-                self.energy_tables.stack_enthalpies
-                [outer as usize][inner as usize]
-                .expect("from file")
-            ),
-            (3, 3) => (
-                self.energy_tables.int11
-                [outer as usize][inner as usize]
-                [fwdseq[1] as usize][revseq[1] as usize].expect("from file")
-                ,
-                self.energy_tables.int11_enthalpies
-                [outer as usize][inner as usize]
-                [fwdseq[1] as usize][revseq[1] as usize].expect("from file")
-            ),
-            (3, 4) => (
+                self.energy_tables.stack[outer as usize][inner as usize]
+                .expect("from file"),
+            (3, 3) => 
+                self.energy_tables.int11[outer as usize][inner as usize]
+                [fwdseq[1] as usize][revseq[1] as usize]
+                .expect("from file"),
+            (3, 4) => 
                 self.energy_tables.int21
-                [outer as usize]
-                [inner as usize]
-                [fwdseq[1] as usize]
-                [revseq[1] as usize]
+                [outer as usize][inner as usize]
+                [fwdseq[1] as usize][revseq[1] as usize]
                 [revseq[2] as usize]
-                .expect("from file")
-                ,
-                self.energy_tables.int21_enthalpies
-                [outer as usize]
-                [inner as usize]
-                [fwdseq[1] as usize]
-                [revseq[1] as usize]
-                [revseq[2] as usize]
-                .expect("from file")
-            ),
-            (4, 3) => (
+                .expect("from file"),
+            (4, 3) => 
                 self.energy_tables.int21
-                [inner as usize]
-                [outer as usize]
-                [revseq[1] as usize]
-                [fwdseq[1] as usize]
-                [fwdseq[2] as usize]
-                .expect("from file")
-                ,
-                self.energy_tables.int21_enthalpies
-                [inner as usize]
-                [outer as usize]
-                [revseq[1] as usize]
-                [fwdseq[1] as usize]
-                [fwdseq[2] as usize]
-                .expect("from file")
-            ),
-            (4, 4) => (
+                [inner as usize][outer as usize]
+                [revseq[1] as usize][fwdseq[1] as usize]
+                [fwdseq[2] as usize].expect("from file"),
+            (4, 4) => 
                 self.energy_tables.int22
                 [outer as usize][inner as usize]
                 [fwdseq[1] as usize][fwdseq[2] as usize]
                 [revseq[1] as usize][revseq[2] as usize]
-                .expect("from file")
-                ,
-                self.energy_tables.int22_enthalpies
-                [outer as usize][inner as usize]
-                [fwdseq[1] as usize][fwdseq[2] as usize]
-                [revseq[1] as usize][revseq[2] as usize]
-                .expect("from file")
-            ),
+                .expect("from file"),
             (l, 2) | (2, l) => { // General Bulge case
                 let n = l - 2;
-                let (pg1, th1) = if is_ru_end(outer) {(
-                    self.energy_tables.misc.terminal_ru_en37, 
-                    self.energy_tables.misc.terminal_ru_enth) 
-                } else { (0, 0) };
-                let (pg2, th2) = if is_ru_end(inner) {(
-                    self.energy_tables.misc.terminal_ru_en37, 
-                    self.energy_tables.misc.terminal_ru_enth) 
-                } else { (0, 0) };
-                if n <= 30 {(
-                    self.energy_tables.bulge[n].unwrap() + pg1 + pg2,
-                    self.energy_tables.bulge_enthalpies[n].unwrap() + th1 + th2
-                )} else {(
-                    self.energy_tables.bulge[30].unwrap() + pg1 + pg2 +
-                    (self.lxc37 * (n as f64).ln() / 30.) as i32,
-                    self.energy_tables.bulge_enthalpies[30].unwrap() + th1 + th2 +
-                    (self.lxc37 * (n as f64).ln() / 30.) as i32
-                )}
+                let pg1 = if !is_ru_end(outer) { 0 } else {
+                    self.energy_tables.misc.terminal_ru_en37
+                };
+                let pg2 = if !is_ru_end(inner) { 0 } else {
+                    self.energy_tables.misc.terminal_ru_en37
+                };
+                if n <= 30 {
+                    self.energy_tables.bulge[n].unwrap() + pg1 + pg2
+                } else {
+                    self.energy_tables.bulge[30].unwrap() + pg1 + pg2
+                    + (self.lxc * ((n as f64) / 30.).ln()) as i32
+                }
             },
             (l, 3) | (3, l) => { // 1-n interior looop
-                let mut en37 = self.energy_tables.mismatch_interior_1n
-                    [outer as usize][fwdseq[1] as usize][revseq[revseq.len() - 2] as usize].unwrap() +
+                let mut en = 
                     self.energy_tables.mismatch_interior_1n
-                        [inner as usize][revseq[1] as usize][fwdseq[fwdseq.len() - 2] as usize].unwrap();
+                    [outer as usize][fwdseq[1] as usize]
+                    [revseq[revseq.len() - 2] as usize].unwrap() +
+                    self.energy_tables.mismatch_interior_1n
+                    [inner as usize][revseq[1] as usize]
+                    [fwdseq[fwdseq.len() - 2] as usize].unwrap();
 
-                let mut enth = self.energy_tables.mismatch_interior_1n_enthalpies
-                    [outer as usize][fwdseq[1] as usize][revseq[revseq.len() - 2] as usize].unwrap() +
-                    self.energy_tables.mismatch_interior_1n_enthalpies
-                        [inner as usize][revseq[1] as usize][fwdseq[fwdseq.len() - 2] as usize].unwrap();
-
-                let asy = (l - 3) as i32;
-                en37 += self.energy_tables.ninio.max.min(asy * self.energy_tables.ninio.en37);
-                // NOTE: This is probably wrong?!?!
-                enth += self.energy_tables.ninio.max.min(asy * self.energy_tables.ninio.enth);
+                en += self.energy_tables.ninio.max.min(
+                    (l - 3) as i32 * self.energy_tables.ninio.en37);
 
                 let n = l - 1; 
                 if n <= 30 {
-                    en37 += self.energy_tables.interior[n].unwrap();
-                    enth += self.energy_tables.interior_enthalpies[n].unwrap();
+                    en + self.energy_tables.interior[n].unwrap()
                 } else {
-                    en37 += self.energy_tables.interior[30].unwrap() + (self.lxc37 * (n as f64).ln() / 30.) as i32;
-                    enth += self.energy_tables.interior_enthalpies[30].unwrap() + (self.lxc37 * (n as f64).ln() / 30.) as i32;
+                    en + self.energy_tables.interior[30].unwrap() 
+                       + (self.lxc * ((n as f64) / 30.).ln()) as i32
                 }
-                (en37, enth)
             }
             (5, 4) | (4, 5) => { // 2-3 interior looop
-                let mut en37 = self.energy_tables.mismatch_interior_23
-                    [outer as usize][fwdseq[1] as usize][revseq[revseq.len() - 2] as usize].unwrap() +
+                let mut en = 
                     self.energy_tables.mismatch_interior_23
-                        [inner as usize][revseq[1] as usize][fwdseq[fwdseq.len() - 2] as usize].unwrap();
-
-                let mut enth = self.energy_tables.mismatch_interior_23_enthalpies
-                    [outer as usize][fwdseq[1] as usize][revseq[revseq.len() - 2] as usize].unwrap() +
-                    self.energy_tables.mismatch_interior_23_enthalpies
-                        [inner as usize][revseq[1] as usize][fwdseq[fwdseq.len() - 2] as usize].unwrap();
-
-                en37 += self.energy_tables.ninio.en37;
-                enth += self.energy_tables.ninio.enth;
-
-                en37 += self.energy_tables.interior[5].unwrap();
-                enth += self.energy_tables.interior_enthalpies[5].unwrap();
-                (en37, enth)
+                    [outer as usize][fwdseq[1] as usize]
+                    [revseq[revseq.len() - 2] as usize].unwrap() +
+                    self.energy_tables.mismatch_interior_23
+                    [inner as usize][revseq[1] as usize]
+                    [fwdseq[fwdseq.len() - 2] as usize].unwrap();
+                en += self.energy_tables.ninio.en37;
+                en += self.energy_tables.interior[5].unwrap();
+                en
             }
             (lfwd, lrev) => { 
-                let mut en37 = self.energy_tables.mismatch_interior
-                    [outer as usize][fwdseq[1] as usize][revseq[lrev - 2] as usize].unwrap() +
+                let mut en = self.energy_tables.mismatch_interior
+                    [outer as usize][fwdseq[1] as usize]
+                    [revseq[lrev - 2] as usize].unwrap() +
                     self.energy_tables.mismatch_interior
-                    [inner as usize][revseq[1] as usize][fwdseq[lfwd - 2] as usize].unwrap();
-
-                let mut enth = self.energy_tables.mismatch_interior_enthalpies
-                    [outer as usize][fwdseq[1] as usize][revseq[lrev - 2] as usize].unwrap() +
-                    self.energy_tables.mismatch_interior_enthalpies
-                    [inner as usize][revseq[1] as usize][fwdseq[lfwd - 2] as usize].unwrap();
+                    [inner as usize][revseq[1] as usize]
+                    [fwdseq[lfwd - 2] as usize].unwrap();
 
                 let asy = (lfwd as isize - lrev as isize).abs() as i32;
-                en37 += self.energy_tables.ninio.max.min(asy * self.energy_tables.ninio.en37);
-                // NOTE: This is probably wrong?!?!
-                enth += self.energy_tables.ninio.max.min(asy * self.energy_tables.ninio.enth);
+                en += self.energy_tables.ninio.max.min(
+                    asy * self.energy_tables.ninio.en37);
  
                 let n = lfwd + lrev - 4; 
                 if n <= 30 {
-                    en37 += self.energy_tables.interior[n].unwrap();
-                    enth += self.energy_tables.interior_enthalpies[n].unwrap();
+                    en + self.energy_tables.interior[n].unwrap()
                 } else {
-                    en37 += self.energy_tables.interior[30].unwrap() + (self.lxc37 * (n as f64).ln() / 30.) as i32;
-                    enth += self.energy_tables.interior_enthalpies[30].unwrap() + (self.lxc37 * (n as f64).ln() / 30.) as i32;
+                    en + self.energy_tables.interior[30].unwrap() 
+                       + (self.lxc * ((n as f64) / 30.).ln()) as i32
                 }
-                (en37, enth)
             }
-        };
-
-        if self.temperature == 37.0 { 
-            en37
-        } else {
-            rescale_energy_to_temp(enth, en37, self.temperature)
         }
     }
 
     fn multibranch(&self, segments: &[&[Base]]) -> i32 {
         let is_ru_end = |pt| matches!(pt
             , PairTypeRNA::GU | PairTypeRNA::UG 
-            | PairTypeRNA::AU | PairTypeRNA::UA | PairTypeRNA::NN);
+            | PairTypeRNA::AU | PairTypeRNA::UA 
+            | PairTypeRNA::NN);
 
         let n = segments.len(); 
 
-        let mut en37 = 0;
-        let mut enth = 0;
- 
+        let mut en = 0;
         for i in 0..n {
             let j = (i + 1) % n; 
             let pair = PairTypeRNA::from((*segments[i].last().unwrap(), segments[j][0]));
             if is_ru_end(pair) { 
-                en37 += self.energy_tables.misc.terminal_ru_en37;
-                enth += self.energy_tables.misc.terminal_ru_enth;
+                en += self.energy_tables.misc.terminal_ru_en37;
             }
             let d5 = segments.get(i)
                 .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(d)));
-            let d3 = segments.get(j)
-                .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(1)));
+            let d3 = segments.get(j).and_then(|seg| seg.get(1));
 
             //NOTE: This does not take the minimum over all options, it always
             // prefers terminal mismatch over single dangling.
-            let (g, h) = match (d5, d3) { 
+            let den = match (d5, d3) { 
                 (Some(&b5), Some(&b3)) => 
-                    (self.energy_tables.mismatch_exterior[pair as usize][b5 as usize][b3 as usize].unwrap(),
-                     self.energy_tables.mismatch_exterior_enthalpies[pair as usize][b5 as usize][b3 as usize].unwrap()),
+                    self.energy_tables.mismatch_exterior
+                    [pair as usize][b5 as usize][b3 as usize].unwrap(),
                 (Some(&b5), None) => 
-                    (self.energy_tables.dangle5[pair as usize][b5 as usize].unwrap(),
-                     self.energy_tables.dangle5_enthalpies[pair as usize][b5 as usize].unwrap()),
+                    self.energy_tables.dangle5
+                     [pair as usize][b5 as usize].unwrap(),
                 (None, Some(&b3)) => 
-                    (self.energy_tables.dangle3[pair as usize][b3 as usize].unwrap(),
-                     self.energy_tables.dangle3_enthalpies[pair as usize][b3 as usize].unwrap()),
-                _ => (0, 0),
+                    self.energy_tables.dangle3
+                    [pair as usize][b3 as usize].unwrap(),
+                _ => 0,
             };
-            en37 += g;
-            enth += h;
+            en += den;
         }
  
-        en37 += self.energy_tables.ml_params.base_en37 
-             + self.energy_tables.ml_params.closing_en37
-             + self.energy_tables.ml_params.intern_en37 * n as i32;
-        enth += self.energy_tables.ml_params.base_enth
-             + self.energy_tables.ml_params.closing_enth
-             + self.energy_tables.ml_params.intern_enth * n as i32;
-
-        if self.temperature == 37.0 { 
-            en37
-        } else {
-            rescale_energy_to_temp(enth, en37, self.temperature)
-        }
+        en + self.energy_tables.ml_params.base_en37 
+           + self.energy_tables.ml_params.closing_en37
+           + self.energy_tables.ml_params.intern_en37 * n as i32
     }
 
     fn exterior(&self, segments: &[&[Base]]) -> i32 {
@@ -372,45 +258,37 @@ impl ViennaRNA {
             , PairTypeRNA::GU | PairTypeRNA::UG 
             | PairTypeRNA::AU | PairTypeRNA::UA | PairTypeRNA::NN);
  
-        let mut en37 = 0;
-        let mut enth = 0;
+        let mut en = 0;
         let n = segments.len() - 1; 
         for i in 0..n {
             let j = i + 1; 
             
             let pair = (*segments[i].last().unwrap(), segments[j][0]).into();
             if is_ru_end(pair) { 
-                en37 += self.energy_tables.misc.terminal_ru_en37;
-                enth += self.energy_tables.misc.terminal_ru_enth;
+                en += self.energy_tables.misc.terminal_ru_en37;
             }
 
             let d5 = segments.get(i)
                 .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(d)));
-            let d3 = segments.get(j)
-                .and_then(|seg| seg.len().checked_sub(2).and_then(|d| seg.get(1)));
+            let d3 = segments.get(j).and_then(|seg| seg.get(1));
 
             //NOTE: This does not take the minimum over all options, it always
             // prefers terminal mismatch over single dangling.
-            let (g, h) = match (d5, d3) { 
+            let den = match (d5, d3) { 
                 (Some(&b5), Some(&b3)) => 
-                    (self.energy_tables.mismatch_exterior[pair as usize][b5 as usize][b3 as usize].unwrap(),
-                     self.energy_tables.mismatch_exterior_enthalpies[pair as usize][b5 as usize][b3 as usize].unwrap()),
+                    self.energy_tables.mismatch_exterior
+                    [pair as usize][b5 as usize][b3 as usize].unwrap(),
                 (Some(&b5), None) => 
-                    (self.energy_tables.dangle5[pair as usize][b5 as usize].unwrap(),
-                     self.energy_tables.dangle5_enthalpies[pair as usize][b5 as usize].unwrap()),
+                    self.energy_tables.dangle5
+                    [pair as usize][b5 as usize].unwrap(),
                 (None, Some(&b3)) => 
-                    (self.energy_tables.dangle3[pair as usize][b3 as usize].unwrap(),
-                     self.energy_tables.dangle3_enthalpies[pair as usize][b3 as usize].unwrap()),
-                _ => (0, 0),
+                     self.energy_tables.dangle3
+                    [pair as usize][b3 as usize].unwrap(),
+                _ => 0,
             };
-            en37 += g;
-            enth += h;
+            en += den;
         }
-        if self.temperature == 37.0 { 
-            en37
-        } else {
-            rescale_energy_to_temp(enth, en37, self.temperature)
-        }
+        en
     }
 
     /// A potential helper function to evaluate the energy of a base-pair move.
@@ -477,7 +355,7 @@ impl EnergyModel for ViennaRNA {
 
         match nn_loop {
             NearestNeighborLoop::Hairpin { closing: (i, j) } => {
-                self.hairpin(&sequence[*i..=*j]).unwrap()
+                self.hairpin(&sequence[*i..=*j])
             }
             NearestNeighborLoop::Interior { closing: (i, j), inner: (k, l) } => {
                 let left = &sequence[*i..=*k];
@@ -517,28 +395,34 @@ mod tests {
     fn test_vrna_hairpin_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.hairpin(&basify("GAAAC")).unwrap(), 540);
-        assert_eq!(model.hairpin(&basify("CCGAGG")).unwrap(), 350);
-        assert_eq!(model.hairpin(&basify("CCAAGG")).unwrap(), 330);
-        assert_eq!(model.hairpin(&basify("CAAGG")).unwrap(), 540);
-        assert_eq!(model.hairpin(&basify("CAAAG")).unwrap(), 540);
-        assert_eq!(model.hairpin(&basify("AAAAU")).unwrap(), 590);
-        assert_eq!(model.hairpin(&basify("GAAAU")).unwrap(), 590);
-        assert_eq!(model.hairpin(&basify("CAAAAG")).unwrap(), 410);
-        assert_eq!(model.hairpin(&basify("ACCCU")).unwrap(), 590);
-        assert_eq!(model.hairpin(&basify("GCCCCC")).unwrap(), 490);
+        assert_eq!(model.hairpin(&basify("GAAAC")), 540);
+        assert_eq!(model.hairpin(&basify("CCGAGG")), 350);
+        assert_eq!(model.hairpin(&basify("CCAAGG")), 330);
+        assert_eq!(model.hairpin(&basify("CAAGG")), 540);
+        assert_eq!(model.hairpin(&basify("CAAAG")), 540);
+        assert_eq!(model.hairpin(&basify("AAAAU")), 590);
+        assert_eq!(model.hairpin(&basify("GAAAU")), 590);
+        assert_eq!(model.hairpin(&basify("CAAAAG")), 410);
+        assert_eq!(model.hairpin(&basify("ACCCU")), 590);
+        assert_eq!(model.hairpin(&basify("GCCCCC")), 490);
 
-        assert_eq!(model.hairpin(&basify("GAAAG")).unwrap(), 590);
-        assert_eq!(model.hairpin(&basify("CAAAC")).unwrap(), 590);
+        assert_eq!(model.hairpin(&basify("GAAAG")), 590);
+        assert_eq!(model.hairpin(&basify("CAAAC")), 590);
 
-        assert_eq!(model.hairpin(&basify("AAAAAU")).unwrap(), 530);
-        assert_eq!(model.hairpin(&basify("GAAAAU")).unwrap(), 580);
-        assert_eq!(model.hairpin(&basify("ACCCCU")).unwrap(), 540);
-        assert_eq!(model.hairpin(&basify("ACCCCCU")).unwrap(), 550);
-        assert_eq!(model.hairpin(&basify("AAAAAAU")).unwrap(), 540);
-        assert_eq!(model.hairpin(&basify("AAAAAAAU")).unwrap(), 510);
-        assert_eq!(model.hairpin(&basify("AAAAAAAAAAU")).unwrap(), 610);
-        assert_eq!(model.hairpin(&basify("AAAAAAAAAAA")).unwrap(), 660);
+        assert_eq!(model.hairpin(&basify("AAAAAU")), 530);
+        assert_eq!(model.hairpin(&basify("GAAAAU")), 580);
+        assert_eq!(model.hairpin(&basify("ACCCCU")), 540);
+        assert_eq!(model.hairpin(&basify("ACCCCCU")), 550);
+        assert_eq!(model.hairpin(&basify("AAAAAAU")), 540);
+        assert_eq!(model.hairpin(&basify("AAAAAAAU")), 510);
+        assert_eq!(model.hairpin(&basify("AAAAAAAAAAU")), 610);
+        assert_eq!(model.hairpin(&basify("AAAAAAAAAAA")), 660);
+        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(30)))), 620);
+        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(31)))), 623);
+        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(32)))), 626);
+        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(33)))), 630);
+        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(34)))), 633);
+        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(35)))), 636);
     }
 
     #[test]

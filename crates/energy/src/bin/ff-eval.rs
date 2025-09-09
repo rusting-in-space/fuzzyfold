@@ -21,7 +21,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _: Vec<f64> = parts.map(|s| s.parse().unwrap()).collect();
 
     // ToyModel params (tweak as you like)
-    let model = ViennaRNA::default();
+    let mut model = ViennaRNA::default();
+    model.set_temperature(25.0);
 
     // --- Remaining lines: dot-bracket + energy ---
     for line in lines {

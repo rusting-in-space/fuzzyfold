@@ -8,7 +8,7 @@ interface changes.
 
 You may use GitHubs issues for suggestions, but we can also just schedule a
 zoom call at this point. (The thought of an exploding issues section while 
-there there are missing resources to adress them is unsetteling.)
+there are missing resources to adress them is unsetteling.)
 
 ## Current software (in preparation):
  - **ff-eval**: (Re-)evaluate secondary structures, fuzzy ensemble free energies.

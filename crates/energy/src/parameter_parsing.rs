@@ -346,9 +346,7 @@ impl_loop_parser!(InteriorEnthalpies, interior_enthalpies);
 macro_rules! impl_misc_parser {
     ($struct_name:ident, $field:ident, $ty:ty) => {
         #[derive(Default, Debug)]
-        pub struct $struct_name {
-            base: usize,
-        }
+        pub struct $struct_name;
 
         impl SectionParser for $struct_name {
             fn parse_line(&mut self, line: &str, tables: &mut EnergyTables) {

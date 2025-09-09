@@ -8,6 +8,29 @@ use rustc_hash::FxHashMap;
 use crate::parameter_parsing::ParamFileSection;
 use crate::parameter_parsing::SectionParser;
 
+fn _rescale_energy(en37: i32, enth: i32, dtemp: f64) -> i32 {
+    let en37 = en37 as f64;
+    let enth = enth as f64;
+
+    let dg = enth * (1.0 - dtemp) + en37 * dtemp;
+    dg as i32 // No rounding for ViennaRNA compatibility
+}
+
+fn rescale_energy(g_old: Option<i32>, h: Option<i32>, temp_change: f64) -> Option<i32> {
+    match (g_old, h) {
+        (Some(g), Some(h)) => {
+            let g = g as f64;
+            let h = h as f64;
+            let s = h - g;
+            //Some((h - temp_change * s).round() as i32)
+            Some((h - temp_change * s) as i32)
+        }
+        _ => None,
+    }
+}
+
+
+
 #[derive(Debug)]
 pub enum ParamError {
     Io(std::io::Error),
@@ -92,6 +115,21 @@ const P: usize = 7; // 7 Pair variants for tables.
 impl From<(Base, Base)> for PairTypeRNA {
     fn from(pair: (Base, Base)) -> Self {
         PAIR_LOOKUP[pair.0 as usize][pair.1 as usize]
+    }
+}
+
+impl fmt::Display for PairTypeRNA {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            PairTypeRNA::AU => "A-U",
+            PairTypeRNA::UA => "U-A",
+            PairTypeRNA::CG => "C-G",
+            PairTypeRNA::GC => "G-C",
+            PairTypeRNA::GU => "G-U",
+            PairTypeRNA::UG => "U-G",
+            PairTypeRNA::NN => "N-N",
+        };
+        write!(f, "{}", s)
     }
 }
 
@@ -195,6 +233,24 @@ impl Misc {
             terminal_ru_en37: slice[2],
             terminal_ru_enth: slice[3],
         })
+    }
+}
+
+trait RescaleWith {
+    fn rescale_with(&mut self, enthalpies: &Self, temp_change: f64);
+}
+
+impl RescaleWith for Option<i32> {
+    fn rescale_with(&mut self, enthalpies: &Self, temp_change: f64) {
+        *self = rescale_energy(*self, *enthalpies, temp_change);
+    }
+}
+
+impl<T: RescaleWith, const N: usize> RescaleWith for [T; N] {
+    fn rescale_with(&mut self, enthalpies: &Self, temp_change: f64) {
+        for (g, h) in self.iter_mut().zip(enthalpies.iter()) {
+            g.rescale_with(h, temp_change);
+        }
     }
 }
 
@@ -370,6 +426,56 @@ impl EnergyTables {
         }
         Ok(tables) 
     }
+
+    pub fn rescale(&mut self, temp_change: f64) {
+        self.stack.rescale_with(&self.stack_enthalpies, temp_change);
+        self.mismatch_hairpin.rescale_with(&self.mismatch_hairpin_enthalpies, temp_change);
+        self.mismatch_interior.rescale_with(&self.mismatch_interior_enthalpies, temp_change);
+        self.mismatch_interior_1n.rescale_with(&self.mismatch_interior_1n_enthalpies, temp_change);
+        self.mismatch_interior_23.rescale_with(&self.mismatch_interior_23_enthalpies, temp_change);
+        self.mismatch_multi.rescale_with(&self.mismatch_multi_enthalpies, temp_change);
+        self.mismatch_exterior.rescale_with(&self.mismatch_exterior_enthalpies, temp_change);
+        self.dangle5.rescale_with(&self.dangle5_enthalpies, temp_change);
+        self.dangle3.rescale_with(&self.dangle3_enthalpies, temp_change);
+        (*self.int11).rescale_with(&*self.int11_enthalpies, temp_change);
+        (*self.int21).rescale_with(&*self.int21_enthalpies, temp_change);
+        (*self.int22).rescale_with(&*self.int22_enthalpies, temp_change);
+        self.hairpin.rescale_with(&self.hairpin_enthalpies, temp_change);
+        self.bulge.rescale_with(&self.bulge_enthalpies, temp_change);
+        self.interior.rescale_with(&self.interior_enthalpies, temp_change);
+
+        self.ml_params.base_en37 = rescale_energy(
+            Some(self.ml_params.base_en37),
+            Some(self.ml_params.base_enth),
+            temp_change).unwrap();
+
+        self.ml_params.closing_en37 = rescale_energy(
+            Some(self.ml_params.closing_en37),
+            Some(self.ml_params.closing_enth),
+            temp_change).unwrap();
+
+        self.ml_params.intern_en37 = rescale_energy(
+            Some(self.ml_params.intern_en37),
+            Some(self.ml_params.intern_enth),
+            temp_change).unwrap();
+
+        self.ninio.en37 = rescale_energy(
+            Some(self.ninio.en37),
+            Some(self.ninio.enth),
+            temp_change).unwrap();
+
+        self.misc.duplex_initiation_en37 = rescale_energy(
+            Some(self.misc.duplex_initiation_en37),
+            Some(self.misc.duplex_initiation_enth),
+            temp_change).unwrap();
+
+        self.misc.terminal_ru_en37 = rescale_energy(
+            Some(self.misc.terminal_ru_en37),
+            Some(self.misc.terminal_ru_enth),
+            temp_change).unwrap();
+
+    }
+
 }
 
 #[cfg(test)]
