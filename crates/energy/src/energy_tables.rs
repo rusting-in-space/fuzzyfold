@@ -8,27 +8,18 @@ use rustc_hash::FxHashMap;
 use crate::parameter_parsing::ParamFileSection;
 use crate::parameter_parsing::SectionParser;
 
-fn _rescale_energy(en37: i32, enth: i32, dtemp: f64) -> i32 {
-    let en37 = en37 as f64;
-    let enth = enth as f64;
-
-    let dg = enth * (1.0 - dtemp) + en37 * dtemp;
-    dg as i32 // No rounding for ViennaRNA compatibility
-}
-
 fn rescale_energy(g_old: Option<i32>, h: Option<i32>, temp_change: f64) -> Option<i32> {
     match (g_old, h) {
         (Some(g), Some(h)) => {
-            let g = g as f64;
-            let h = h as f64;
+            let g = (g) as f64;
+            let h = (h) as f64;
             let s = h - g;
-            //Some((h - temp_change * s).round() as i32)
-            Some((h - temp_change * s) as i32)
+            Some((h - temp_change * s).round() as i32) 
+            //Some((h - temp_change * s) as i32) // for better vrna compatibility, no rounding.
         }
         _ => None,
     }
 }
-
 
 
 #[derive(Debug)]
@@ -220,11 +211,13 @@ pub struct Misc {
     pub duplex_initiation_enth: i32,
     pub terminal_ru_en37: i32,
     pub terminal_ru_enth: i32,
+    pub lxc: f64,
 }
 
 impl Misc {
     pub fn from_vrna_param_slice(slice: &[i32]) -> Result<Self, ParamError> {
-        if slice.len() != 4 {
+        if slice.len() != 6 {
+            // NOTE, we are discarding the last 0.
             return Err(ParamError::InvalidLength("Misc", 6, slice.len()));
         }
         Ok(Self {
@@ -232,6 +225,7 @@ impl Misc {
             duplex_initiation_enth: slice[1],
             terminal_ru_en37: slice[2],
             terminal_ru_enth: slice[3],
+            lxc: slice[4] as f64 / 1000.0,
         })
     }
 }
@@ -474,6 +468,7 @@ impl EnergyTables {
             Some(self.misc.terminal_ru_enth),
             temp_change).unwrap();
 
+        self.misc.lxc *= temp_change;
     }
 
 }

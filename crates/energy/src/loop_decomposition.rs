@@ -1,4 +1,6 @@
 
+use colored::*; // brings in the `.red()`, `.blue()` etc.
+use std::fmt;
 use std::ops::Range;
 use structure::PairTable;
 
@@ -20,6 +22,25 @@ pub enum NearestNeighborLoop {
         //NOTE: this list must ALWAYS be in 5'->3' order.
         branches: Vec<(usize, usize)>,
     },
+}
+
+impl fmt::Display for NearestNeighborLoop {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NearestNeighborLoop::Hairpin { closing: (i, j) } => {
+                write!(f, "{} ({}, {})", "Hairpin loop".red().bold(), i, j)
+            }
+            NearestNeighborLoop::Interior { closing: (i, j), inner: (p, q) } => {
+                write!(f, "{} ({}, {}), ({}, {})", "Interior loop".blue().bold(), i, j, p, q)
+            }
+            NearestNeighborLoop::Multibranch { closing: (i, j), branches } => {
+                write!(f, "{} ({}, {}), ({} branches)", "Multibranch".green().bold(), i, j, branches.len())
+            }
+            NearestNeighborLoop::Exterior { branches } => {
+                write!(f, "{} ({} branches)", "Exterior loop".cyan().bold(), branches.len())
+            }
+        }
+    }
 }
 
 impl NearestNeighborLoop {

@@ -127,12 +127,18 @@ macro_rules! impl_dangle_parser {
                 for (m5, token) in line.split_whitespace()
                     .take(PARAM_FILE_MM_ORDER.len()).enumerate() 
                 {
-                    let val = token.parse::<i32>().expect(&format!(
-                            "Failed to parse integer in {} while parsing line {:?}, token {:?}",
-                            stringify!($field),
-                            line,
-                            token
-                    ));
+                    let val = if token == "INF" {
+                        i32::MAX
+                    } else {
+                        token.parse::<i32>().unwrap_or_else(|_| {
+                            panic!(
+                                "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                                stringify!($field),
+                                line,
+                                token
+                            )
+                        })
+                    };
                     let i1 = PARAM_FILE_PAIR_ORDER[self.outer] as usize;
                     let i2 = PARAM_FILE_MM_ORDER[m5] as usize;
                     tables.$field[i1][i2] = Some(val);
@@ -353,10 +359,16 @@ macro_rules! impl_misc_parser {
                 let slice: Vec<i32> = line
                     .split_whitespace()
                     .map(|token| {
-                        token.parse::<i32>().expect(&format!(
-                                "Failed to parse integer in {} while parsing line {:?}, token {:?}",
+                        if let Ok(v) = token.parse::<i32>() {
+                            v
+                        } else if let Ok(f) = token.parse::<f64>() {
+                            (f * 1000.0).round() as i32
+                        } else {
+                            panic!(
+                                "Failed to parse number in {} while parsing line {:?}, token {:?}",
                                 stringify!($field), line, token
-                        ))
+                            )
+                        }
                     })
                 .collect();
 

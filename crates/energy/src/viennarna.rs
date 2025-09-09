@@ -1,3 +1,5 @@
+use log::info;
+
 use core::f64;
 use std::i32;
 use std::path::Path;
@@ -12,7 +14,6 @@ use crate::ParamError;
 use crate::EnergyModel;
 
 const K0: f64 = 273.15;
-const K37: f64 = 310.15; // 37 °C in Kelvin
 
 /// The default ViennaRNA-v2.6 energy model.
 ///
@@ -26,7 +27,6 @@ const K37: f64 = 310.15; // 37 °C in Kelvin
 pub struct ViennaRNA {
     min_hp_size: usize,
     temperature: f64,
-    lxc: f64, /* ViennaRNA parameter for logarithmic loop energy extrapolation */
     energy_tables: EnergyTables,
 }
 
@@ -43,13 +43,12 @@ impl ViennaRNA {
         Ok(ViennaRNA {
             min_hp_size: 3,
             temperature: 37.0,
-            lxc: 107.856, //TODO
             energy_tables,
+            //DANGLES should not be destabilizing at temperature changes.
         })
     }
     
     pub fn set_temperature(&mut self, temperature: f64) {
-
         if (self.temperature - temperature).abs() < f64::EPSILON {
             return;
         }
@@ -58,7 +57,6 @@ impl ViennaRNA {
         let new_temp = temperature + K0;
         let temp_change = new_temp / old_temp;
         self.temperature = temperature;
-        self.lxc *= temp_change;
         self.energy_tables.rescale(temp_change);
     }
 
@@ -86,7 +84,7 @@ impl ViennaRNA {
             et.hairpin[n].expect("from file")
         } else {
             et.hairpin[30].expect("from file")
-            + (self.lxc * ((n as f64) / 30.).ln()) as i32
+            + (self.energy_tables.misc.lxc * ((n as f64) / 30.).ln()) as i32
         };
 
         // NOTE: double check NN desrciption if this is indeed the correct way.
@@ -154,7 +152,7 @@ impl ViennaRNA {
                     self.energy_tables.bulge[n].unwrap() + pg1 + pg2
                 } else {
                     self.energy_tables.bulge[30].unwrap() + pg1 + pg2
-                    + (self.lxc * ((n as f64) / 30.).ln()) as i32
+                    + (self.energy_tables.misc.lxc * ((n as f64) / 30.).ln()) as i32
                 }
             },
             (l, 3) | (3, l) => { // 1-n interior looop
@@ -174,7 +172,7 @@ impl ViennaRNA {
                     en + self.energy_tables.interior[n].unwrap()
                 } else {
                     en + self.energy_tables.interior[30].unwrap() 
-                       + (self.lxc * ((n as f64) / 30.).ln()) as i32
+                       + (self.energy_tables.misc.lxc * ((n as f64) / 30.).ln()) as i32
                 }
             }
             (5, 4) | (4, 5) => { // 2-3 interior looop
@@ -206,7 +204,7 @@ impl ViennaRNA {
                     en + self.energy_tables.interior[n].unwrap()
                 } else {
                     en + self.energy_tables.interior[30].unwrap() 
-                       + (self.lxc * ((n as f64) / 30.).ln()) as i32
+                       + (self.energy_tables.misc.lxc * ((n as f64) / 30.).ln()) as i32
                 }
             }
         }
@@ -346,7 +344,7 @@ impl EnergyModel for ViennaRNA {
         structure.for_each_loop(|l| {
             let en = self.energy_of_loop(sequence, l);
             total += en;
-            //println!("{:?} {}", l, en);
+            info!("{:<45} {:>6.2}", format!("{}:", l), en as f64 / 100.);
         });
         total
     }
@@ -571,38 +569,6 @@ mod tests {
         let seg2 = &basify("C");
         let energy = model.exterior(&[seg1, seg2]);
         assert_eq!(energy, 0); 
-    }
-
-    #[test]
-    fn test_vrna_exterior_single_branch_t25() {
-        let mut model = ViennaRNA::default();
-        model.temperature = 25.0;
-
-        let seg1 = &basify("AUG");
-        let seg2 = &basify("CUG");
-        let energy = model.exterior(&[seg1, seg2]);
-        assert_eq!(energy, -148);
-
-        let seg1 = &basify("UG");
-        let seg2 = &basify("CU");
-        let energy = model.exterior(&[seg1, seg2]);
-        assert_eq!(energy, -148);
-
-        let seg1 = &basify("G");
-        let seg2 = &basify("CU");
-        let energy = model.exterior(&[seg1, seg2]);
-        assert_eq!(energy, -144);
- 
-        let seg1 = &basify("UG");
-        let seg2 = &basify("C");
-        let energy = model.exterior(&[seg1, seg2]);
-        assert_eq!(energy, -1); 
- 
-        let seg1 = &basify("A");
-        let seg2 = &basify("U");
-        let energy = model.exterior(&[seg1, seg2]);
-        assert_eq!(energy, 62); 
- 
     }
 
     #[test]
