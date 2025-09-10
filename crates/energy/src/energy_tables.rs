@@ -1,6 +1,4 @@
 
-use log::warn;
-use colored::*; // brings in the `.red()`, `.blue()` etc.
 use std::fmt;
 use std::fs::File;
 use std::path::Path;
@@ -9,19 +7,9 @@ use rustc_hash::FxHashMap;
 
 use crate::parameter_parsing::ParamFileSection;
 use crate::parameter_parsing::SectionParser;
-
-fn rescale_energy(g_old: Option<i32>, h: Option<i32>, temp_change: f64) -> Option<i32> {
-    match (g_old, h) {
-        (Some(g), Some(h)) => {
-            let g = (g) as f64;
-            let h = (h) as f64;
-            let s = h - g;
-            Some((h - temp_change * s).round() as i32) 
-            //Some((h - temp_change * s) as i32) // for better vrna compatibility, no rounding.
-        }
-        _ => None,
-    }
-}
+use crate::NucleotideVec;
+use crate::BCOUNT as B;
+use crate::PCOUNT as P;
 
 
 #[derive(Debug)]
@@ -59,107 +47,6 @@ impl fmt::Display for ParamError {
             ParamError::InvalidHairpinSize(n) => {
                 write!(f, "Invalid hairpin size: {}", n)
             }
-        }
-    }
-}
-
-#[derive(Clone, Hash, Copy, Debug, Eq, PartialEq)]
-pub enum Base { A, C, G, U, N }
-const B: usize = 5; // 5 Base variants for tables.
-
-impl TryFrom<char> for Base {
-    type Error = ();
-    fn try_from(c: char) -> Result<Self, ()> {
-        Ok(match c.to_ascii_uppercase() {
-            'A' => Base::A,
-            'C' => Base::C,
-            'G' => Base::G,
-            'U' | 'T' => Base::U,
-            '&' | '+' => todo!("Encountered separation character &/+ in sequence."),
-            _ => {
-                warn!("{} Sequence character {} treated as N", "WARNING:".red(), c);
-                Base::N
-            },
-        })
-    }
-}
-
-pub fn basify(seq: &str) -> Vec<Base> {
-    seq.chars()
-        .map(Base::try_from)
-        .collect::<Result<_, _>>()
-        .unwrap_or_else(|_| panic!("Invalid character in sequence: {}", seq))
-}
-
-const PAIR_LOOKUP: [[PairTypeRNA; B]; B] = {
-    use Base::*;
-    use PairTypeRNA::*;
-    let mut table = [[NN; B]; B];
-    table[A as usize][U as usize] = AU;
-    table[U as usize][A as usize] = UA;
-    table[C as usize][G as usize] = CG;
-    table[G as usize][C as usize] = GC;
-    table[G as usize][U as usize] = GU;
-    table[U as usize][G as usize] = UG;
-    table
-};
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum PairTypeRNA { AU, UA, CG, GC, GU, UG, NN }
-const P: usize = 7; // 7 Pair variants for tables.
-
-impl From<(Base, Base)> for PairTypeRNA {
-    fn from(pair: (Base, Base)) -> Self {
-        PAIR_LOOKUP[pair.0 as usize][pair.1 as usize]
-    }
-}
-
-impl fmt::Display for PairTypeRNA {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            PairTypeRNA::AU => "A-U",
-            PairTypeRNA::UA => "U-A",
-            PairTypeRNA::CG => "C-G",
-            PairTypeRNA::GC => "G-C",
-            PairTypeRNA::GU => "G-U",
-            PairTypeRNA::UG => "U-G",
-            PairTypeRNA::NN => "N-N",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-impl PairTypeRNA {
-    pub fn is_ru(&self) -> bool {
-       matches!(self
-            , PairTypeRNA::GU | PairTypeRNA::UG 
-            | PairTypeRNA::AU | PairTypeRNA::UA)
-    }
-
-    pub fn is_wcf(&self) -> bool {
-       matches!(self
-            , PairTypeRNA::GC | PairTypeRNA::CG 
-            | PairTypeRNA::AU | PairTypeRNA::UA)
-    }
-
-    pub fn is_wobble(&self) -> bool {
-       matches!(self, PairTypeRNA::GU | PairTypeRNA::UG)
-    }
-
-    pub fn can_pair(&self) -> bool {
-       self != &PairTypeRNA::NN
-    }
-    
-    pub fn invert(&self) -> PairTypeRNA {
-        use PairTypeRNA::*;
-        match self {
-            AU => UA,
-            UA => AU,
-            CG => GC,
-            GC => CG,
-            GU => UG,
-            UG => GU,
-            NN => NN,
         }
     }
 }
@@ -235,6 +122,19 @@ impl Misc {
     }
 }
 
+fn rescale_energy(g_old: Option<i32>, h: Option<i32>, temp_change: f64) -> Option<i32> {
+    match (g_old, h) {
+        (Some(g), Some(h)) => {
+            let g = (g) as f64;
+            let h = (h) as f64;
+            let s = h - g;
+            Some((h - temp_change * s).round() as i32) 
+            //Some((h - temp_change * s) as i32) // for better vrna compatibility, no rounding.
+        }
+        _ => None,
+    }
+}
+
 trait RescaleWith {
     fn rescale_with(&mut self, enthalpies: &Self, temp_change: f64);
 }
@@ -295,7 +195,7 @@ pub struct EnergyTables {
     pub ninio: NINIO,
     pub misc: Misc,
 
-    pub hairpin_sequences: FxHashMap<Vec<Base>, (i32, i32)>,
+    pub hairpin_sequences: FxHashMap<NucleotideVec, (i32, i32)>,
 }
 
 macro_rules! section_match {
@@ -482,6 +382,8 @@ impl EnergyTables {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use crate::PairTypeRNA;
+    use crate::Base;
 
     #[test]
     fn test_parse_stack() {
@@ -674,8 +576,8 @@ GUUAC     690    1080
         println!("{:?}", tables.hairpin_sequences);
 
         // Check one of the parsed entries
-        assert_eq!(tables.hairpin_sequences[&basify("CCAAGG")], (330, -1030));
-        assert_eq!(tables.hairpin_sequences[&basify("CAACG")], (680, 2370));
+        assert_eq!(tables.hairpin_sequences[&NucleotideVec::from_lossy("CCAAGG")], (330, -1030));
+        assert_eq!(tables.hairpin_sequences[&NucleotideVec::from_lossy("CAACG")], (680, 2370));
     }
 
 }

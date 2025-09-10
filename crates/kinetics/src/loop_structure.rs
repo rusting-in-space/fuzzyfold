@@ -244,7 +244,7 @@ mod tests {
     use super::*;
     use structure::PairTable;
     use energy::ViennaRNA;
-    use energy::basify;
+    use energy::NucleotideVec;
 
     #[test]
     fn test_loop_structure() {
@@ -253,7 +253,7 @@ mod tests {
         let struct_1 = ".(....)....";
 
         let model = ViennaRNA::default();
-        let sequence = basify(sequence);
+        let sequence = NucleotideVec::from_lossy(sequence);
         let struct_0 = PairTable::try_from(struct_0).expect("valid");
         let mut ls = LoopStructure::try_from((&sequence[..], &struct_0, &model)).expect("bla");
 

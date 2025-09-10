@@ -397,14 +397,14 @@ pub fn d3_base(seg: &[Base], exterior: bool) -> Option<&Base> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basify;
+    use crate::NucleotideVec;
 
     #[test]
     fn test_ff_hairpin_evaluation() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par");
         let model = FuzzyEval::from_parameter_file(path).unwrap();
 
-        assert_eq!(model.eval_hairpin_loop(&basify("GAAAC")), 540);
+        assert_eq!(model.eval_hairpin_loop(&NucleotideVec::from_lossy("GAAAC")), 540);
     }
 
     #[test]
@@ -412,10 +412,10 @@ mod tests {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par");
         let model = FuzzyEval::from_parameter_file(path).unwrap();
 
-        let seg1 = basify("UUG");
-        let seg2 = basify("CUG");
-        let seg3 = basify("CG");
-        let seg4 = basify("CUG");
+        let seg1 = NucleotideVec::from_lossy("UUG");
+        let seg2 = NucleotideVec::from_lossy("CUG");
+        let seg3 = NucleotideVec::from_lossy("CG");
+        let seg4 = NucleotideVec::from_lossy("CUG");
 
         let binding: Vec<&[Base]> = vec![&seg1, &seg2, &seg3, &seg4];
 
@@ -428,10 +428,10 @@ mod tests {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par");
         let model = FuzzyEval::from_parameter_file(path).unwrap();
 
-        let seg1 = basify("UUG");
-        let seg2 = basify("CUG");
-        let seg3 = basify("CG");
-        let seg4 = basify("CUG");
+        let seg1 = NucleotideVec::from_lossy("UUG");
+        let seg2 = NucleotideVec::from_lossy("CUG");
+        let seg3 = NucleotideVec::from_lossy("CG");
+        let seg4 = NucleotideVec::from_lossy("CUG");
 
         let binding: Vec<&[Base]> = vec![&seg1, &seg2, &seg3, &seg4];
 

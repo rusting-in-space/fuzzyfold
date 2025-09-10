@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn test_invalid_token() {
         let err = PairTable::try_from("(x)").unwrap_err();
-        assert_eq!(format!("{}", err), "Invalid token 'x' at position 1");
+        assert_eq!(format!("{}", err), "Invalid character 'x' in structure at position 1");
     }
 
     #[test]

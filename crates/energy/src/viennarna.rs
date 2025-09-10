@@ -67,11 +67,7 @@ impl ViennaRNA {
         if n < self.min_hp_size {
             panic!("Invalid hairpin size {n}");
         }
-        let closing = PairTypeRNA::from((seq[0], *seq.last().unwrap()));
-
-        if !closing.can_pair() {
-            eprintln!("Invalid base-pair: {}", closing);
-        }
+        let closing = PairTypeRNA::new((seq[0], *seq.last().unwrap()));
 
         // Special hairpin energies
         if seq.len() <= 6 { 
@@ -103,9 +99,8 @@ impl ViennaRNA {
         en
     }
 
-    /// g37 = g37 AU end-penalty + sum(37-stacking)
     fn interior(&self, fwdseq: &[Base], revseq: &[Base]) -> i32 {
-        let outer = PairTypeRNA::from((*fwdseq.first().unwrap(), *revseq.last().unwrap()));
+        let outer = PairTypeRNA::new((*fwdseq.first().unwrap(), *revseq.last().unwrap()));
         let inner = PairTypeRNA::from((*revseq.first().unwrap(), *fwdseq.last().unwrap()));
 
         let is_ru_end = |pt| matches!(pt
@@ -216,6 +211,9 @@ impl ViennaRNA {
             , PairTypeRNA::GU | PairTypeRNA::UG 
             | PairTypeRNA::AU | PairTypeRNA::UA 
             | PairTypeRNA::NN);
+
+        // For warning purposes only.
+        let _ = PairTypeRNA::new((segments[0][0], *segments.last().unwrap().last().unwrap()));
 
         let n = segments.len(); 
 
@@ -388,130 +386,130 @@ impl EnergyModel for ViennaRNA {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::basify;
+    use crate::NucleotideVec;
 
     #[test]
     fn test_vrna_hairpin_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.hairpin(&basify("GAAAC")), 540);
-        assert_eq!(model.hairpin(&basify("CCGAGG")), 350);
-        assert_eq!(model.hairpin(&basify("CCAAGG")), 330);
-        assert_eq!(model.hairpin(&basify("CAAGG")), 540);
-        assert_eq!(model.hairpin(&basify("CAAAG")), 540);
-        assert_eq!(model.hairpin(&basify("AAAAU")), 590);
-        assert_eq!(model.hairpin(&basify("GAAAU")), 590);
-        assert_eq!(model.hairpin(&basify("CAAAAG")), 410);
-        assert_eq!(model.hairpin(&basify("ACCCU")), 590);
-        assert_eq!(model.hairpin(&basify("GCCCCC")), 490);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("GAAAC")), 540);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("CCGAGG")), 350);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("CCAAGG")), 330);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("CAAGG")), 540);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("CAAAG")), 540);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("AAAAU")), 590);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("GAAAU")), 590);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("CAAAAG")), 410);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("ACCCU")), 590);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("GCCCCC")), 490);
 
-        assert_eq!(model.hairpin(&basify("GAAAG")), 590);
-        assert_eq!(model.hairpin(&basify("CAAAC")), 590);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("GAAAG")), 590);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("CAAAC")), 590);
 
-        assert_eq!(model.hairpin(&basify("AAAAAU")), 530);
-        assert_eq!(model.hairpin(&basify("GAAAAU")), 580);
-        assert_eq!(model.hairpin(&basify("ACCCCU")), 540);
-        assert_eq!(model.hairpin(&basify("ACCCCCU")), 550);
-        assert_eq!(model.hairpin(&basify("AAAAAAU")), 540);
-        assert_eq!(model.hairpin(&basify("AAAAAAAU")), 510);
-        assert_eq!(model.hairpin(&basify("AAAAAAAAAAU")), 610);
-        assert_eq!(model.hairpin(&basify("AAAAAAAAAAA")), 660);
-        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(30)))), 620);
-        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(31)))), 623);
-        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(32)))), 626);
-        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(33)))), 630);
-        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(34)))), 633);
-        assert_eq!(model.hairpin(&basify(&format!("C{}G", "A".repeat(35)))), 636);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("AAAAAU")), 530);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("GAAAAU")), 580);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("ACCCCU")), 540);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("ACCCCCU")), 550);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("AAAAAAU")), 540);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("AAAAAAAU")), 510);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("AAAAAAAAAAU")), 610);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy("AAAAAAAAAAA")), 660);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy(&format!("C{}G", "A".repeat(30)))), 620);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy(&format!("C{}G", "A".repeat(31)))), 623);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy(&format!("C{}G", "A".repeat(32)))), 626);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy(&format!("C{}G", "A".repeat(33)))), 630);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy(&format!("C{}G", "A".repeat(34)))), 633);
+        assert_eq!(model.hairpin(&NucleotideVec::from_lossy(&format!("C{}G", "A".repeat(35)))), 636);
     }
 
     #[test]
     fn test_vrna_stacking_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.interior(&basify("CG"), &basify("CG")), -240);
-        assert_eq!(model.interior(&basify("AC"), &basify("GU")), -220);
-        assert_eq!(model.interior(&basify("GU"), &basify("AC")), -220);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CG"), &NucleotideVec::from_lossy("CG")), -240);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AC"), &NucleotideVec::from_lossy("GU")), -220);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GU"), &NucleotideVec::from_lossy("AC")), -220);
     }
 
     #[test]
     fn test_vrna_int11_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.interior(&basify("CCG"), &basify("CGG")), 50);
-        assert_eq!(model.interior(&basify("CAG"), &basify("CAG")), 90);
-        assert_eq!(model.interior(&basify("ACU"), &basify("AAU")), 190);
-        assert_eq!(model.interior(&basify("GCU"), &basify("AUC")), 120);
-        assert_eq!(model.interior(&basify("GCU"), &basify("AGC")), 120);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CCG"), &NucleotideVec::from_lossy("CGG")), 50);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CAG"), &NucleotideVec::from_lossy("CAG")), 90);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("ACU"), &NucleotideVec::from_lossy("AAU")), 190);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GCU"), &NucleotideVec::from_lossy("AUC")), 120);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GCU"), &NucleotideVec::from_lossy("AGC")), 120);
     }
 
     #[test]
     fn test_vrna_int21_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.interior(&basify("CACG"), &basify("CGG")), 110);
-        assert_eq!(model.interior(&basify("CAAG"), &basify("CAG")), 230);
-        assert_eq!(model.interior(&basify("AACU"), &basify("AAU")), 370);
-        assert_eq!(model.interior(&basify("GACU"), &basify("AUC")), 300);
-        assert_eq!(model.interior(&basify("GACU"), &basify("AGC")), 300);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CACG"), &NucleotideVec::from_lossy("CGG")), 110);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CAAG"), &NucleotideVec::from_lossy("CAG")), 230);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AACU"), &NucleotideVec::from_lossy("AAU")), 370);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GACU"), &NucleotideVec::from_lossy("AUC")), 300);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GACU"), &NucleotideVec::from_lossy("AGC")), 300);
 
-        assert_eq!(model.interior(&basify("CGG"), &basify("CACG")), 110);
-        assert_eq!(model.interior(&basify("CAG"), &basify("CAAG")), 230);
-        assert_eq!(model.interior(&basify("AAU"), &basify("AACU")), 370);
-        assert_eq!(model.interior(&basify("AUC"), &basify("GACU")), 300);
-        assert_eq!(model.interior(&basify("AGC"), &basify("GACU")), 300);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CGG"), &NucleotideVec::from_lossy("CACG")), 110);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CAG"), &NucleotideVec::from_lossy("CAAG")), 230);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AAU"), &NucleotideVec::from_lossy("AACU")), 370);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AUC"), &NucleotideVec::from_lossy("GACU")), 300);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AGC"), &NucleotideVec::from_lossy("GACU")), 300);
     }
 
     #[test]
     fn test_vrna_bulge_1_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.interior(&basify("CAG"), &basify("CG")), 140);
-        assert_eq!(model.interior(&basify("AAU"), &basify("AU")), 270);
-        assert_eq!(model.interior(&basify("GAU"), &basify("AC")), 160);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CAG"), &NucleotideVec::from_lossy("CG")), 140);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AAU"), &NucleotideVec::from_lossy("AU")), 270);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GAU"), &NucleotideVec::from_lossy("AC")), 160);
 
-        assert_eq!(model.interior(&basify("CCG"), &basify("CG")), 140);
-        assert_eq!(model.interior(&basify("ACU"), &basify("AU")), 270);
-        assert_eq!(model.interior(&basify("GCU"), &basify("AC")), 160);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CCG"), &NucleotideVec::from_lossy("CG")), 140);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("ACU"), &NucleotideVec::from_lossy("AU")), 270);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GCU"), &NucleotideVec::from_lossy("AC")), 160);
 
-        assert_eq!(model.interior(&basify("CG"), &basify("CAG")), 140);
-        assert_eq!(model.interior(&basify("AU"), &basify("AAU")), 270);
-        assert_eq!(model.interior(&basify("AC"), &basify("GAU")), 160);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CG"), &NucleotideVec::from_lossy("CAG")), 140);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AU"), &NucleotideVec::from_lossy("AAU")), 270);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AC"), &NucleotideVec::from_lossy("GAU")), 160);
                                                                 
-        assert_eq!(model.interior(&basify("CG"), &basify("CCG")), 140);
-        assert_eq!(model.interior(&basify("AU"), &basify("ACU")), 270);
-        assert_eq!(model.interior(&basify("AC"), &basify("GCU")), 160);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CG"), &NucleotideVec::from_lossy("CCG")), 140);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AU"), &NucleotideVec::from_lossy("ACU")), 270);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AC"), &NucleotideVec::from_lossy("GCU")), 160);
     }
 
     #[test]
     fn test_vrna_bulge_2_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.interior(&basify("CAAG"), &basify("CG")), 280);
-        assert_eq!(model.interior(&basify("AAAU"), &basify("AU")), 380);
-        assert_eq!(model.interior(&basify("GAAU"), &basify("AC")), 330);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CAAG"), &NucleotideVec::from_lossy("CG")), 280);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AAAU"), &NucleotideVec::from_lossy("AU")), 380);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GAAU"), &NucleotideVec::from_lossy("AC")), 330);
 
-        assert_eq!(model.interior(&basify("CCAG"), &basify("CG")), 280);
-        assert_eq!(model.interior(&basify("ACAU"), &basify("AU")), 380);
-        assert_eq!(model.interior(&basify("GCAU"), &basify("AC")), 330);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CCAG"), &NucleotideVec::from_lossy("CG")), 280);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("ACAU"), &NucleotideVec::from_lossy("AU")), 380);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GCAU"), &NucleotideVec::from_lossy("AC")), 330);
 
-        assert_eq!(model.interior(&basify("CG"), &basify("CAAG")), 280);
-        assert_eq!(model.interior(&basify("AU"), &basify("AAAU")), 380);
-        assert_eq!(model.interior(&basify("AC"), &basify("GAAU")), 330);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CG"), &NucleotideVec::from_lossy("CAAG")), 280);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AU"), &NucleotideVec::from_lossy("AAAU")), 380);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AC"), &NucleotideVec::from_lossy("GAAU")), 330);
 
-        assert_eq!(model.interior(&basify("CG"), &basify("CCAG")), 280);
-        assert_eq!(model.interior(&basify("AU"), &basify("ACAU")), 380);
-        assert_eq!(model.interior(&basify("AC"), &basify("GCAU")), 330);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CG"), &NucleotideVec::from_lossy("CCAG")), 280);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AU"), &NucleotideVec::from_lossy("ACAU")), 380);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AC"), &NucleotideVec::from_lossy("GCAU")), 330);
     }
 
     #[test]
     fn test_vrna_interior_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.interior(&basify("ACA"), &basify("UGAAU")), 370);
-        assert_eq!(model.interior(&basify("ACAA"), &basify("UGAAU")), 290);
-        assert_eq!(model.interior(&basify("GUAGU"), &basify("AGGC")), 260);
-        assert_eq!(model.interior(&basify("AUAGU"), &basify("AGGU")), 330);
-        assert_eq!(model.interior(&basify("GGC"), &basify("GUGC")), 110);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("ACA"), &NucleotideVec::from_lossy("UGAAU")), 370);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("ACAA"), &NucleotideVec::from_lossy("UGAAU")), 290);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GUAGU"), &NucleotideVec::from_lossy("AGGC")), 260);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("AUAGU"), &NucleotideVec::from_lossy("AGGU")), 330);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("GGC"), &NucleotideVec::from_lossy("GUGC")), 110);
     }
 
 
@@ -519,29 +517,29 @@ mod tests {
     fn test_vrna_bulge_n_evaluation() {
         let model = ViennaRNA::default();
 
-        assert_eq!(model.interior(&basify("CAAAAAAG"), &basify("CG")), 440);
-        assert_eq!(model.interior(&basify("CAAAAAAAAG"), &basify("CG")), 470);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CAAAAAAG"), &NucleotideVec::from_lossy("CG")), 440);
+        assert_eq!(model.interior(&NucleotideVec::from_lossy("CAAAAAAAAG"), &NucleotideVec::from_lossy("CG")), 470);
     }
 
     #[test]
     fn test_vrna_multibranch() {
         let model = ViennaRNA::default();
 
-        let seg1 = &basify("AAAA");
-        let seg2 = &basify("AAA");
-        let seg3 = &basify("AAAAA");
+        let seg1 = &NucleotideVec::from_lossy("AAAA");
+        let seg2 = &NucleotideVec::from_lossy("AAA");
+        let seg3 = &NucleotideVec::from_lossy("AAAAA");
         let energy = model.multibranch(&[seg1, seg2, seg3]);
         assert_eq!(energy, 720);
 
-        let seg1 = &basify("GAAC");
-        let seg2 = &basify("GAC");
-        let seg3 = &basify("GAAAC");
+        let seg1 = &NucleotideVec::from_lossy("GAAC");
+        let seg2 = &NucleotideVec::from_lossy("GAC");
+        let seg3 = &NucleotideVec::from_lossy("GAAAC");
         let energy = model.multibranch(&[seg1, seg2, seg3]);
         assert_eq!(energy, 330);
 
-        let seg1 = &basify("GAAC");
-        let seg2 = &basify("GAC");
-        let seg3 = &basify("GAAAAAAAAAAAAAAAAAAC");
+        let seg1 = &NucleotideVec::from_lossy("GAAC");
+        let seg2 = &NucleotideVec::from_lossy("GAC");
+        let seg3 = &NucleotideVec::from_lossy("GAAAAAAAAAAAAAAAAAAC");
         let energy = model.multibranch(&[seg1, seg2, seg3]);
         assert_eq!(energy, 330);
 
@@ -551,23 +549,23 @@ mod tests {
     fn test_vrna_exterior_single_branch() {
         let model = ViennaRNA::default();
 
-        let seg1 = &basify("AUG");
-        let seg2 = &basify("CUG");
+        let seg1 = &NucleotideVec::from_lossy("AUG");
+        let seg2 = &NucleotideVec::from_lossy("CUG");
         let energy = model.exterior(&[seg1, seg2]);
         assert_eq!(energy, -120);
 
-        let seg1 = &basify("UG");
-        let seg2 = &basify("CU");
+        let seg1 = &NucleotideVec::from_lossy("UG");
+        let seg2 = &NucleotideVec::from_lossy("CU");
         let energy = model.exterior(&[seg1, seg2]);
         assert_eq!(energy, -120); 
 
-        let seg1 = &basify("G");
-        let seg2 = &basify("CU");
+        let seg1 = &NucleotideVec::from_lossy("G");
+        let seg2 = &NucleotideVec::from_lossy("CU");
         let energy = model.exterior(&[seg1, seg2]);
         assert_eq!(energy, -120);
  
-        let seg1 = &basify("UG");
-        let seg2 = &basify("C");
+        let seg1 = &NucleotideVec::from_lossy("UG");
+        let seg2 = &NucleotideVec::from_lossy("C");
         let energy = model.exterior(&[seg1, seg2]);
         assert_eq!(energy, 0); 
     }
@@ -576,33 +574,33 @@ mod tests {
     fn test_vrna_exterior_two_branches() {
         let model = ViennaRNA::default();
 
-        let seg1 = &basify("AUG");
-        let seg2 = &basify("CUG");
-        let seg3 = &basify("CUG");
+        let seg1 = &NucleotideVec::from_lossy("AUG");
+        let seg2 = &NucleotideVec::from_lossy("CUG");
+        let seg3 = &NucleotideVec::from_lossy("CUG");
         let energy = model.exterior(&[seg1, seg2, seg3]);
         assert_eq!(energy, -240);
 
-        let seg1 = &basify("AUG");
-        let seg2 = &basify("CUUG");
-        let seg3 = &basify("CUG");
+        let seg1 = &NucleotideVec::from_lossy("AUG");
+        let seg2 = &NucleotideVec::from_lossy("CUUG");
+        let seg3 = &NucleotideVec::from_lossy("CUG");
         let energy = model.exterior(&[seg1, seg2, seg3]);
         assert_eq!(energy, -240);
 
-        let seg1 = &basify("AUG");
-        let seg2 = &basify("CUUG");
-        let seg3 = &basify("C");
+        let seg1 = &NucleotideVec::from_lossy("AUG");
+        let seg2 = &NucleotideVec::from_lossy("CUUG");
+        let seg3 = &NucleotideVec::from_lossy("C");
         let energy = model.exterior(&[seg1, seg2, seg3]);
         assert_eq!(energy, -120);
 
-        let seg1 = &basify("AUG");
-        let seg2 = &basify("CG");
-        let seg3 = &basify("CU");
+        let seg1 = &NucleotideVec::from_lossy("AUG");
+        let seg2 = &NucleotideVec::from_lossy("CG");
+        let seg3 = &NucleotideVec::from_lossy("CU");
         let energy = model.exterior(&[seg1, seg2, seg3]);
         assert_eq!(energy, -290);
 
-        let seg1 = &basify("ACA");
-        let seg2 = &basify("UGG");
-        let seg3 = &basify("CUG");
+        let seg1 = &NucleotideVec::from_lossy("ACA");
+        let seg2 = &NucleotideVec::from_lossy("UGG");
+        let seg3 = &NucleotideVec::from_lossy("CUG");
         let energy = model.exterior(&[seg1, seg2, seg3]);
         assert_eq!(energy, -130);
     }
@@ -611,17 +609,17 @@ mod tests {
     fn test_vrna_exterior_three_branches() {
         let model = ViennaRNA::default();
 
-        let seg1 = &basify("AUG");
-        let seg2 = &basify("CUG");
-        let seg3 = &basify("CUG");
-        let seg4 = &basify("CUG");
+        let seg1 = &NucleotideVec::from_lossy("AUG");
+        let seg2 = &NucleotideVec::from_lossy("CUG");
+        let seg3 = &NucleotideVec::from_lossy("CUG");
+        let seg4 = &NucleotideVec::from_lossy("CUG");
         let energy = model.exterior(&[seg1, seg2, seg3, seg4]);
         assert_eq!(energy, -360);
 
-        let seg1 = &basify("AUG");
-        let seg2 = &basify("CUG");
-        let seg3 = &basify("UUG");
-        let seg4 = &basify("CUG");
+        let seg1 = &NucleotideVec::from_lossy("AUG");
+        let seg2 = &NucleotideVec::from_lossy("CUG");
+        let seg3 = &NucleotideVec::from_lossy("UUG");
+        let seg4 = &NucleotideVec::from_lossy("CUG");
         let energy = model.exterior(&[seg1, seg2, seg3, seg4]);
         assert_eq!(energy, -240);
     }
@@ -634,32 +632,32 @@ mod tests {
         let seq = "GAAAAC";
         let dbr = "(....)";
         let e37 = 450;
-        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+        assert_eq!(model.energy_of_structure(&NucleotideVec::from_lossy(seq), &PairTable::try_from(dbr).expect("valid")), e37);
 
         let seq = "GAAAAG";
         let dbr = "(....)";
         let e37 = 630;
-        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+        assert_eq!(model.energy_of_structure(&NucleotideVec::from_lossy(seq), &PairTable::try_from(dbr).expect("valid")), e37);
 
         let seq = "ACGUUAAAGACGU";
         let dbr = "(((((...)))))";
         let e37 = -170;
-        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+        assert_eq!(model.energy_of_structure(&NucleotideVec::from_lossy(seq), &PairTable::try_from(dbr).expect("valid")), e37);
 
         let seq = "AGACGACAAGGUUGAAUCGC";
         let dbr = ".(.(((.(....)...))))";
         let e37 = 420;
-        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+        assert_eq!(model.energy_of_structure(&NucleotideVec::from_lossy(seq), &PairTable::try_from(dbr).expect("valid")), e37);
 
         let seq = "GAGUAGUGGAACCAGGCUAU";
         let dbr = ".((...((....))..))..";
         let e37 = 190;
-        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+        assert_eq!(model.energy_of_structure(&NucleotideVec::from_lossy(seq), &PairTable::try_from(dbr).expect("valid")), e37);
 
         let seq = "UCUACUAUUCCGGCUUGACAUAAAUAUCGAGUGCUCGACC";
         let dbr = "...........(.(((((........)))))..)......";
         let e37 = -210;
-        assert_eq!(model.energy_of_structure(&basify(seq), &PairTable::try_from(dbr).expect("valid")), e37);
+        assert_eq!(model.energy_of_structure(&NucleotideVec::from_lossy(seq), &PairTable::try_from(dbr).expect("valid")), e37);
 
 
 

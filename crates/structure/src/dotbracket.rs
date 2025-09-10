@@ -14,14 +14,16 @@ pub enum DotBracket {
     Break,    // '+' or '&'
 }
 
-impl From<char> for DotBracket {
-    fn from(c: char) -> Self {
+impl TryFrom<char> for DotBracket {
+    type Error = StructureError;
+
+    fn try_from(c: char) -> Result<Self, Self::Error> {
         match c {
-            '.' => DotBracket::Unpaired,
-            '(' => DotBracket::Open,
-            ')' => DotBracket::Close,
-            '+' | '&' => DotBracket::Break,
-            _ => panic!("Invalid dot-bracket character: {}", c),
+            '.' => Ok(DotBracket::Unpaired),
+            '(' => Ok(DotBracket::Open),
+            ')' => Ok(DotBracket::Close),
+            '+' | '&' => Ok(DotBracket::Break),
+            _ => Err(StructureError::InvalidToken(c.to_string(), "dot-bracket".into(), 0)),
         }
     }
 }
@@ -47,10 +49,21 @@ impl Deref for DotBracketVec {
     }
 }
 
-impl From<&str> for DotBracketVec {
-    fn from(s: &str) -> Self {
-        let vec = s.chars().map(DotBracket::from).collect();
-        DotBracketVec(vec)
+impl TryFrom<&str> for DotBracketVec {
+    type Error = StructureError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let mut vec = Vec::with_capacity(s.len());
+        for (i, c) in s.chars().enumerate() {
+            match DotBracket::try_from(c) {
+                Ok(db) => vec.push(db),
+                Err(StructureError::InvalidToken(tok, src, _)) => {
+                    return Err(StructureError::InvalidToken(tok, src, i));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(DotBracketVec(vec))
     }
 }
 
@@ -125,9 +138,9 @@ mod tests {
 
     #[test]
     fn test_dot_bracket_from_char() {
-        assert_eq!(DotBracket::from('.'), DotBracket::Unpaired);
-        assert_eq!(DotBracket::from('('), DotBracket::Open);
-        assert_eq!(DotBracket::from(')'), DotBracket::Close);
+        assert_eq!(DotBracket::try_from('.').unwrap(), DotBracket::Unpaired);
+        assert_eq!(DotBracket::try_from('(').unwrap(), DotBracket::Open);
+        assert_eq!(DotBracket::try_from(')').unwrap(), DotBracket::Close);
     }
 
     #[test]
@@ -138,14 +151,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid dot-bracket character")]
     fn test_dot_bracket_from_invalid_char() {
-        let _ = DotBracket::from('x');
+        let res = DotBracket::try_from('x');
+        assert!(matches!(res, Err(StructureError::InvalidToken(_, src, _)) if src == "dot-bracket"));
     }
 
     #[test]
     fn test_dot_bracket_vec_from_str() {
-        let dbv = DotBracketVec::from("(.).");
+        let dbv = DotBracketVec::try_from("(.).").unwrap();
         assert_eq!(format!("{}", dbv), "(.).");
         assert_eq!(dbv.len(), 4);
         assert_eq!(dbv[0], DotBracket::Open);

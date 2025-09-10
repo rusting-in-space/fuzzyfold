@@ -1,7 +1,7 @@
 
 use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
-use crate::energy_tables::Base;
+use crate::Base;
 
 pub trait EnergyModel {
     fn can_pair(&self, b1: Base, b2: Base) -> bool;

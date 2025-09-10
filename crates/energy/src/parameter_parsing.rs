@@ -9,7 +9,7 @@
 ///
 
 /// Importing only EnergyTables and it's indices.
-use crate::{Base, basify};
+use crate::{Base, NucleotideVec};
 use crate::PairTypeRNA;
 use crate::EnergyTables;
 
@@ -404,7 +404,7 @@ macro_rules! impl_sequence_parser {
                             line,
                             h
                     ));
-                    tables.$field.insert(basify(seq), (g, h));
+                    tables.$field.insert(NucleotideVec::from_lossy(seq), (g, h));
                 }
             }
         }
