@@ -1,21 +1,23 @@
-use std::io::Write;
+use std::io::{stdin, Write, BufRead};
 use std::path::PathBuf;
 use log::{info, debug};
 use colored::*;
 use env_logger::Builder;
 use clap::{Parser, ArgAction};
-use anyhow;
+use anyhow::Result;
+use anyhow::anyhow;
 
 use energy::ViennaRNA;
 use energy::EnergyModel;
+use energy::NucleotideVec;
 use structure::PairTable;
-use energy::commandline_utils::ruler;
-use energy::commandline_utils::read_fasta_like_input;
+use structure::DotBracketVec;
+
 
 /// ff-eval: Free energy evaluator
 #[derive(Parser, Debug)]
 #[command(name = "ff-eval")]
-#[command(version, about = "Evaluate secondary structure free energies from sequence/structure input")]
+#[command(version, about = "Evaluate secondary structure free energies.")]
 pub struct Cli {
     /// Input file (FASTA-like), or "-" for stdin
     #[arg(value_name = "INPUT", default_value = "-")]
@@ -49,7 +51,7 @@ fn init_logging(verbosity: u8) {
         .init();
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     init_logging(cli.verbose);
     let param_file = cli.model_parameters.unwrap_or_else(|| {
@@ -61,23 +63,37 @@ fn main() -> anyhow::Result<()> {
     let mut model = ViennaRNA::from_parameter_file(param_file)?;
     model.set_temperature(cli.temperature);
 
-    //if atty::is(Stream::Stdin) {
-    //    println!("Enter dot-bracket strings (one per line). Provide empty line to finish:");
-    //    println!("....,....1....,....2....,....3....,....4....,....5....,....6....,....7....,....8");
-    //}
 
-    let (header, sequence, structure) = read_fasta_like_input(&cli.input)?;
-    if let Some(h) = header {
-        println!("{}", h.yellow())
+    let mut lines = stdin().lock().lines();
+
+    // --- First line: sequence and maybe extra numbers ---
+    let first = lines.next().ok_or_else(|| anyhow!("Missing first line"))??;
+
+    let mut parts = first.split_whitespace();
+    let token = parts.next().ok_or_else(|| anyhow!("Missing sequence"))?;
+    let sequence = NucleotideVec::from_lossy(token);
+    let _: Vec<f64> = parts.map(|s| s.parse().unwrap()).collect();
+    println!("{}", sequence);
+
+    // --- Remaining lines: dot-bracket + energy ---
+    for line in lines {
+        let line = line?;
+        let mut parts = line.split_whitespace();
+
+        let token = parts.next().ok_or_else(|| anyhow!("Missing structure"))?;
+        let structure = DotBracketVec::try_from(token)?;
+        let ref_en: f64 = parts.next().ok_or_else(|| anyhow!("Missing energy"))?.parse()?;
+
+        let pairings = PairTable::try_from(&structure)?;
+        let energy = model.energy_of_structure(&sequence, &pairings);
+
+        let mark = if (ref_en * 100f64).round() as i32 != energy { "*" } else { "" };
+        if true || mark == "*" {
+            println!("{} {:6.2} {:6.2} {}", structure, energy as f64 / 100.0, ref_en, mark);
+        }
     }
-
-    let pairings = PairTable::try_from(&structure)?;
-    let energy = model.energy_of_structure(&sequence, &pairings);
-
-    info!("{}", ruler(sequence.len() - 1).magenta());
-    println!("{}\n{} {}", sequence, structure, format!("{:>6.2}", energy as f64 / 100.0).green());
-    info!("{}", ruler(sequence.len() - 1).magenta());
 
     Ok(())
 }
+
 
