@@ -53,7 +53,7 @@ impl TryFrom<&PairTable> for LoopTable {
                     }
                 }
                 Some(j) if j == i => {
-                    return Err(StructureError::InvalidToken("self-pairing".into(), i));
+                    return Err(StructureError::InvalidToken(format!("self-pairing '{}'", i), "pair table".to_string(), i));
                 }
                 _ => unreachable!(),
             }

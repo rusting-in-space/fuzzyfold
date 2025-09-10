@@ -56,7 +56,7 @@ impl TryFrom<&str> for MultiPairTable {
                     domain_idx += 1;
                 }
                 _ => {
-                    return Err(StructureError::InvalidToken(ch.to_string(), i)); 
+                    return Err(StructureError::InvalidToken(format!("character '{}'", ch), "complex".to_string(), i));
                 }
             }
         }

@@ -6,7 +6,7 @@ pub enum StructureError {
     UnmatchedMultiOpen((usize, usize)),          // '(' at this position was never closed
     UnmatchedClose(usize),         // ')' at this position has no matching '('
     UnmatchedMultiClose((usize, usize)),          // '(' at this position was never closed
-    InvalidToken(String, usize),   // invalid char and position
+    InvalidToken(String, String, usize),   // invalid char and position
     InvalidPairTable(usize),   // invalid char and position
 }
 
@@ -25,8 +25,8 @@ impl fmt::Display for StructureError {
             StructureError::UnmatchedMultiClose((si, di)) => {
                 write!(f, "Unmatched ')' at strand {}, domain {}", si, di)
             }
-            StructureError::InvalidToken(tok, i) => {
-                write!(f, "Invalid token '{}' at position {}", tok, i)
+            StructureError::InvalidToken(tok, src, i) => {
+                write!(f, "Invalid {} in {} at position {}", tok, src, i)
             }
             StructureError::InvalidPairTable(i) => {
                 write!(f, "Invalid entry at pair table position {}", i)
