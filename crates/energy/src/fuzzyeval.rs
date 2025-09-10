@@ -38,11 +38,11 @@ pub struct FuzzyEval {
     _symmetry_enth: i32,
 
     coaxial_mm_discontious_en37: i32,
-    coaxial_mm_discontious_enth: i32,
-    coaxial_mm_wcf_bonus_en37: i32,
-    coaxial_mm_wcf_bonus_enth: i32,
-    coaxial_mm_gu_bonus_en37: i32,
-    coaxial_mm_gu_bonus_enth: i32,
+    _coaxial_mm_discontious_enth: i32,
+    _coaxial_mm_wcf_bonus_en37: i32,
+    _coaxial_mm_wcf_bonus_enth: i32,
+    _coaxial_mm_gu_bonus_en37: i32,
+    _coaxial_mm_gu_bonus_enth: i32,
 
     energy_tables: EnergyTables,
 }
@@ -62,11 +62,11 @@ impl FuzzyEval {
             _symmetry_enth: 0,
 
             coaxial_mm_discontious_en37: -210,
-            coaxial_mm_discontious_enth: -846, // +/- 2.75
-            coaxial_mm_wcf_bonus_en37: -40,
-            coaxial_mm_wcf_bonus_enth: -40,
-            coaxial_mm_gu_bonus_en37: -20,
-            coaxial_mm_gu_bonus_enth: -20,
+            _coaxial_mm_discontious_enth: -846, // +/- 2.75
+            _coaxial_mm_wcf_bonus_en37: -40,
+            _coaxial_mm_wcf_bonus_enth: -40,
+            _coaxial_mm_gu_bonus_en37: -20,
+            _coaxial_mm_gu_bonus_enth: -20,
 
             energy_tables,
         })

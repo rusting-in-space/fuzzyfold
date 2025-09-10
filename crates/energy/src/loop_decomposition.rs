@@ -28,16 +28,29 @@ impl fmt::Display for NearestNeighborLoop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NearestNeighborLoop::Hairpin { closing: (i, j) } => {
-                write!(f, "{} ({}, {})", "Hairpin loop".red().bold(), i, j)
+                write!(f, "{:<8} ({:>3}, {:>3})", 
+                    "Hairpin".cyan(), i, j)
             }
             NearestNeighborLoop::Interior { closing: (i, j), inner: (p, q) } => {
-                write!(f, "{} ({}, {}), ({}, {})", "Interior loop".blue().bold(), i, j, p, q)
+                write!(f, "{:<8} ({:>3}, {:>3}), ({:>3}, {:>3})", 
+                    "Interior".cyan(), i, j, p, q)
             }
             NearestNeighborLoop::Multibranch { closing: (i, j), branches } => {
-                write!(f, "{} ({}, {}), ({} branches)", "Multibranch".green().bold(), i, j, branches.len())
+                //write!(f, "{:<15} ({:>3}, {:>3}), ({:>2} branches)", "Multibranch".cyan(), i, j, branches.len())
+                write!(f, "{:<8} ({:>3}, {:>3}), {}", 
+                    "Multibr.".cyan().bold(), i, j, 
+                    branches.iter()
+                    .map(|(i, j)| format!("[{:>3}, {:>3}]", i, j))
+                    .collect::<Vec<_>>()
+                    .join(", "))
             }
             NearestNeighborLoop::Exterior { branches } => {
-                write!(f, "{} ({} branches)", "Exterior loop".cyan().bold(), branches.len())
+                write!(f, "{:<8}             {}", 
+                    "Exterior".cyan().bold(), 
+                    branches.iter()
+                    .map(|(i, j)| format!("[{:>3}, {:>3}]", i, j))
+                    .collect::<Vec<_>>()
+                    .join(", "))
             }
         }
     }

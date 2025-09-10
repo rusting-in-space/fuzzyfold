@@ -1,4 +1,6 @@
 
+use log::warn;
+use colored::*; // brings in the `.red()`, `.blue()` etc.
 use std::fmt;
 use std::fs::File;
 use std::path::Path;
@@ -73,8 +75,11 @@ impl TryFrom<char> for Base {
             'C' => Base::C,
             'G' => Base::G,
             'U' | 'T' => Base::U,
-            'A'..='Z' => Base::N,
-            _ => return Err(()),
+            '&' | '+' => todo!("Encountered separation character &/+ in sequence."),
+            _ => {
+                warn!("{} Sequence character {} treated as N", "WARNING:".red(), c);
+                Base::N
+            },
         })
     }
 }

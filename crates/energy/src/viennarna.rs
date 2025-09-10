@@ -1,4 +1,5 @@
 use log::info;
+use colored::*; 
 
 use core::f64;
 use std::i32;
@@ -344,7 +345,7 @@ impl EnergyModel for ViennaRNA {
         structure.for_each_loop(|l| {
             let en = self.energy_of_loop(sequence, l);
             total += en;
-            info!("{:<45} {:>6.2}", format!("{}:", l), en as f64 / 100.);
+            info!("{:<41} {}", format!("{}:", l), format!("{:>6.2}", en as f64 / 100.).green());
         });
         total
     }
