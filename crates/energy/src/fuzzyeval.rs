@@ -25,7 +25,6 @@ fn rescale_energy_to_temp(enth: i32, en37: i32, temp_c: f64) -> i32 {
 }
 
 
-#[derive(Debug)]
 pub struct FuzzyEval {
     temperature: f64,
     min_hp_size: usize,

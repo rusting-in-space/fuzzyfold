@@ -24,7 +24,6 @@ const K0: f64 = 273.15;
 ///
 /// Only single-stranded folding is supported.
 ///
-#[derive(Debug)]
 pub struct ViennaRNA {
     min_hp_size: usize,
     temperature: f64,

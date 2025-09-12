@@ -51,7 +51,7 @@ impl fmt::Display for ParamError {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct MLParams {
     pub base_en37: i32,
     pub base_enth: i32,
@@ -77,7 +77,7 @@ impl MLParams {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct NINIO {
     pub en37: i32,
     pub enth: i32,
@@ -97,7 +97,7 @@ impl NINIO {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Misc {
     pub duplex_initiation_en37: i32,
     pub duplex_initiation_enth: i32,
@@ -154,7 +154,6 @@ impl<T: RescaleWith, const N: usize> RescaleWith for [T; N] {
 }
 
 
-#[derive(Debug)]
 pub struct EnergyTables {
     pub stack:            [[Option<i32>; P]; P],
     pub stack_enthalpies: [[Option<i32>; P]; P],

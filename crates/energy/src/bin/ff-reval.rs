@@ -1,7 +1,6 @@
 use std::io::{stdin, Write, BufRead};
 use std::path::PathBuf;
-use log::{info, debug};
-use colored::*;
+use log::{debug};
 use env_logger::Builder;
 use clap::{Parser, ArgAction};
 use anyhow::Result;

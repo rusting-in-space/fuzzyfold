@@ -31,7 +31,7 @@ pub fn read_fasta_like_stdin() -> Result<(Option<String>, NucleotideVec, DotBrac
     read_fasta_like(reader)
 }
 
-pub fn read_fasta_like<R: BufRead>(mut reader: R) -> Result<(Option<String>, NucleotideVec, DotBracketVec)> {
+pub fn read_fasta_like<R: BufRead>(reader: R) -> Result<(Option<String>, NucleotideVec, DotBracketVec)> {
     let mut header: Option<String> = None;
     let mut sequence: Option<NucleotideVec> = None;
     let mut structure: Option<DotBracketVec> = None;
@@ -111,11 +111,11 @@ mod tests {
 
     #[test]
     fn test_read_fasta_like_basic() {
-        let input = ">test\nACGU\n(((....)))\n";
+        let input = ">test\nACGAAAAAAA\n(((....)))\n";
         let (header, seq, dbv) = read_fasta_like_string(input).unwrap();
 
         assert_eq!(header, Some(">test".into()));
-        assert_eq!(seq.to_string(), "ACGU");
+        assert_eq!(seq.to_string(), "ACGAAAAAAA");
         assert_eq!(dbv.to_string(), "(((....)))");
 
         let input = "ACGU\n....\n";
@@ -142,22 +142,15 @@ mod tests {
     }
 
     #[test]
-    fn test_long_input() {
+    fn test_read_fasta_like_length_mismatch() {
         let input = "\
 >test_long
 ACGUACGUACGUACGUACGU
 ((((....))))((((....))))
 ";
+        let res = read_fasta_like_string(input);
+        assert!(res.is_err(), "Expected error for length difference");
 
-        //let res = read_fasta_like_string(input);
-        let (header, seq, dbv) = read_fasta_like_string(input).unwrap();
-
-        assert_eq!(header, Some(">test_long".to_string()));
-        assert_eq!(seq.to_string(), "ACGUACGUACGUACGUACGU");
-        assert_eq!(dbv.to_string(), "((((....))))((((....))))");
-
-        // Make sure lengths match
-        assert_eq!(seq.len(), dbv.len());
     }
 
 }

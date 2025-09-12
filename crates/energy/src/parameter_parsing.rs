@@ -37,7 +37,7 @@ pub trait SectionParser {
 
 macro_rules! impl_stack_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Default, Debug)]
+        #[derive(Default)]
         pub struct $struct_name {
             outer: usize,
         }
@@ -70,7 +70,7 @@ impl_stack_parser!(StackEnthalpies, stack_enthalpies);
 
 macro_rules! impl_mismatch_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Default, Debug)]
+        #[derive(Default)]
         pub struct $struct_name {
             outer: usize,
             m5: usize,
@@ -117,7 +117,7 @@ impl_mismatch_parser!(MismatchExteriorEnthalpies, mismatch_exterior_enthalpies);
 
 macro_rules! impl_dangle_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Default, Debug)]
+        #[derive(Default)]
         pub struct $struct_name {
             outer: usize,
         }
@@ -156,7 +156,7 @@ impl_dangle_parser!(Dangle3Enthalpies, dangle3_enthalpies);
 
 macro_rules! impl_int11_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Default, Debug)]
+        #[derive(Default)]
         pub struct $struct_name {
             outer: usize,
             inner: usize,
@@ -200,7 +200,7 @@ impl_int11_parser!(Int11Enthalpies, int11_enthalpies);
 
 macro_rules! impl_int21_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Default, Debug)]
+        #[derive(Default)]
         pub struct $struct_name {
             outer: usize,
             inner: usize,
@@ -249,7 +249,6 @@ impl_int21_parser!(Int21Enthalpies, int21_enthalpies);
 
 macro_rules! impl_int22_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Debug)]
         pub struct $struct_name {
             outer: usize,
             inner: usize,
@@ -316,7 +315,7 @@ impl_int22_parser!(Int22Enthalpies, int22_enthalpies);
 
 macro_rules! impl_loop_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Default, Debug)]
+        #[derive(Default)]
         pub struct $struct_name {
             base: usize,
         }
@@ -351,7 +350,7 @@ impl_loop_parser!(InteriorEnthalpies, interior_enthalpies);
 
 macro_rules! impl_misc_parser {
     ($struct_name:ident, $field:ident, $ty:ty) => {
-        #[derive(Default, Debug)]
+        #[derive(Default)]
         pub struct $struct_name;
 
         impl SectionParser for $struct_name {
@@ -385,7 +384,7 @@ impl_misc_parser!(Misc, misc, crate::energy_tables::Misc);
 
 macro_rules! impl_sequence_parser {
     ($struct_name:ident, $field:ident) => {
-        #[derive(Default, Debug)]
+        #[derive(Default)]
         pub struct $struct_name { }
 
         impl SectionParser for $struct_name {
@@ -414,7 +413,6 @@ macro_rules! impl_sequence_parser {
 impl_sequence_parser!(HairpinSequences, hairpin_sequences);
 
 
-#[derive(Debug)]
 pub enum ParamFileSection {
     None,
     Stack(Stack),
