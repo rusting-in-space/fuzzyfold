@@ -57,6 +57,28 @@ impl fmt::Display for NearestNeighborLoop {
 }
 
 impl NearestNeighborLoop {
+
+    /// Return all base pairs (closing, inner, and/or branches) contained in this loop.
+    pub fn pairs(&self) -> Vec<(usize, usize)> {
+        match self {
+            NearestNeighborLoop::Hairpin { closing } => {
+                vec![*closing]
+            }
+            NearestNeighborLoop::Interior { closing, inner } => {
+                vec![*closing, *inner]
+            }
+            NearestNeighborLoop::Multibranch { closing, branches } => {
+                let mut pairs = Vec::with_capacity(1 + branches.len());
+                pairs.push(*closing);
+                pairs.extend(branches.iter().cloned());
+                pairs
+            }
+            NearestNeighborLoop::Exterior { branches } => {
+                branches.clone()
+            }
+        }
+    }
+
     pub fn classify(
         closing: Option<(usize, usize)>, 
         branches: Vec<(usize, usize)>, 

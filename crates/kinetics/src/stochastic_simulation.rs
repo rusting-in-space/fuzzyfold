@@ -4,7 +4,7 @@ use nohash_hasher::IntMap;
 use energy::EnergyModel;
 use crate::LoopStructure;
 
-const KB: f64 = 0.0019872041; // kcal/(mol*K)
+const KB: f64 = 0.001987204285; // kcal/(mol*K)
 const K0: f64 = 273.15;
 
 pub trait KineticModel {
@@ -36,7 +36,7 @@ impl KineticModel for Metropolis {
         if delta_e <= 0 {
             self.k0
         } else {
-            self.k0 * (-delta_e as f64 / 100. / self.kt).exp()
+            self.k0 * ((-delta_e as f64 / 100.) / self.kt).exp()
         }
     }
 }
@@ -50,7 +50,6 @@ pub enum Reaction {
         rate: f64,
     },
     Del {
-        plid: usize,
         i: usize,
         j: usize,
         delta_e: i32,
@@ -67,9 +66,9 @@ impl Reaction {
     }
 
     pub fn new_del<K: KineticModel>(model: &K, 
-        plid: usize, i: usize, j: usize, delta_e: i32) -> Self {
+        i: usize, j: usize, delta_e: i32) -> Self {
         let rate = model.rate(delta_e);
-        Reaction::Del { plid, i, j, delta_e, rate }
+        Reaction::Del { i, j, delta_e, rate }
     }
 
     pub fn ij(&self) -> (usize, usize) {
@@ -137,20 +136,23 @@ impl<'a, M: EnergyModel, K: KineticModel> From<(LoopStructure<'a, M>, &'a K)>
             for &(i, j, delta) in add_neighbors {
                 let rxn = Reaction::new_add(ratemodel, i, j, delta);
                 lflux += rxn.rate();
+                //println!("Loop: {} flux: {} ({})", lli, lflux, rxn.delta_e());
                 lrxns.push(rxn);
             }
             loop_flux.insert(*lli, lflux);
             loop_rxns.insert(*lli, lrxns);
             flux += lflux;
+            //println!("{} {}", flux, lflux);
         }
 
         let mut pair_rxns: IntMap<usize, Reaction> = IntMap::default();
         let mut pair_flux = 0.0;
-        for (pli, (i, j), delta) in loopstructure.get_del_neighbors() {
-            let rxn = Reaction::new_del(ratemodel, pli, i, j, delta);
+        for (i, j, delta) in loopstructure.get_del_neighbors() {
+            let rxn = Reaction::new_del(ratemodel, i, j, delta);
             flux += rxn.rate();
             pair_flux += rxn.rate();
-            pair_rxns.insert(pli, rxn);
+            pair_rxns.insert(i, rxn);
+            //println!("Flux: {} {}", flux, pair_flux);
         }
 
         Self {
@@ -166,6 +168,9 @@ impl<'a, M: EnergyModel, K: KineticModel> From<(LoopStructure<'a, M>, &'a K)>
 }
 
 impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
+    pub fn current_structure(&self) -> String {
+        format!("{}", self.loopstructure)
+    }
    
     pub fn remove_loop_reaction(&mut self, lli: usize) {
         self.flux -= self.loop_flux.remove(&lli).expect("The lflux to be removed.");
@@ -198,13 +203,17 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
         self.flux += lflux;
     }
 
-    pub fn insert_pair_reaction(&mut self, 
-        pli: usize, (i, j): (usize, usize), delta: i32
-    ) {
-        let rxn = Reaction::new_del(self.ratemodel, pli, i, j, delta);
-        self.flux += rxn.rate();
-        self.pair_flux += rxn.rate();
-        self.pair_rxns.insert(pli, rxn);
+    pub fn update_pair_reactions(&mut self, change: Vec<(usize, usize, i32)>) {
+        for (i, j, delta) in change {
+            if let Some(old) = self.pair_rxns.remove(&i) {
+                self.flux -= old.rate();
+                self.pair_flux -= old.rate();
+            }
+            let rxn = Reaction::new_del(self.ratemodel, i, j, delta);
+            self.flux += rxn.rate();
+            self.pair_flux += rxn.rate();
+            self.pair_rxns.insert(i, rxn);
+        }
     }
 
     pub fn simulate<R, F>(
@@ -223,9 +232,12 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
 
         loop {
             assert!(self.flux > 0.0, "Flux vanished, no reactions possible");
+            //println!("Mean waiting time {} from {}", 1./self.flux, self.flux);
+            //println!("{:?} {:?}", self.loop_rxns, self.pair_rxns);
 
             // sample waiting time ~ Exp(flux)
             let tau = -rng.random::<f64>().ln() / self.flux;
+            
 
             if t + tau > t_max {
                 t = t_max;
@@ -270,16 +282,18 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
                 match rxn {
                     Reaction::Add { i, j, .. } => {
                         self.remove_loop_reaction(idx);
-                        let ((lli, ami), (llj, amj), (pli, (i, j), delta)) = self
+                        let ((lli, ami), (llj, amj), pair_changes) = self
                             .loopstructure.apply_add_move(i, j);
                         self.insert_loop_reactions(lli, ami);
                         self.insert_loop_reactions(llj, amj);
-                        self.insert_pair_reaction(pli, (i, j), delta);
+                        self.update_pair_reactions(pair_changes);
                     },
-                    Reaction::Del { plid, .. } => {
+                    Reaction::Del { i, j, .. } => {
                         self.remove_pair_reaction(idx);
-                        let (lli, neighbors) = self.loopstructure.apply_del_move(plid);
+                        let ((lli, neighbors), pair_changes) = self
+                            .loopstructure.apply_del_move(i, j);
                         self.insert_loop_reactions(lli, neighbors);
+                        self.update_pair_reactions(pair_changes);
                     },
                 }
             } else {
