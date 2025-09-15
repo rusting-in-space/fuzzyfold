@@ -1,8 +1,7 @@
 use std::io::{stdin, Write, BufRead};
-use std::path::PathBuf;
 use log::{debug};
 use env_logger::Builder;
-use clap::{Parser, ArgAction};
+use clap::{Parser, Args, ArgAction};
 use anyhow::Result;
 use anyhow::anyhow;
 
@@ -11,29 +10,32 @@ use energy::EnergyModel;
 use energy::NucleotideVec;
 use structure::PairTable;
 use structure::DotBracketVec;
+use energy::commandline_utils::EnergyModelArguments;
 
 
-/// ff-eval: Free energy evaluator
-#[derive(Parser, Debug)]
-#[command(name = "ff-eval")]
-#[command(version, about = "Evaluate secondary structure free energies.")]
-pub struct Cli {
+#[derive(Debug, Args)]
+pub struct EvalInput {
     /// Input file (FASTA-like), or "-" for stdin
     #[arg(value_name = "INPUT", default_value = "-")]
     pub input: String,
-
-    /// Temperature in Celsius
-    #[arg(short, long, default_value = "37.0")]
-    pub temperature: f64,
-
-    /// Parameter file (e.g. rna_turner2004.par)
-    #[arg(short, long, value_name = "FILE")]
-    pub model_parameters: Option<PathBuf>,
 
     /// Verbosity (-v = info, -vv = debug)
     #[arg(short, long, action = ArgAction::Count)]
     pub verbose: u8,
 }
+
+
+#[derive(Debug, Parser)]
+#[command(name = "ff-eval")]
+#[command(author, version, about)]
+pub struct Cli {
+    #[command(flatten)]
+    pub eval: EvalInput,
+
+    #[command(flatten, next_help_heading = "Energy model parameters")]
+    pub energy: EnergyModelArguments,
+}
+
 
 fn init_logging(verbosity: u8) {
     let level = match verbosity {
@@ -52,15 +54,13 @@ fn init_logging(verbosity: u8) {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    init_logging(cli.verbose);
-    let param_file = cli.model_parameters.unwrap_or_else(|| {
-        PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par"))
-    });
+    init_logging(cli.eval.verbose);
+    let param_file = cli.energy.param_file();
 
     debug!("Using parameter file: {:?}", param_file);
-    debug!("Temperature: {} °C", cli.temperature);
+    debug!("Temperature: {} °C", cli.energy.temperature);
     let mut model = ViennaRNA::from_parameter_file(param_file)?;
-    model.set_temperature(cli.temperature);
+    model.set_temperature(cli.energy.temperature);
 
 
     let mut lines = stdin().lock().lines();

@@ -2,36 +2,12 @@ use std::fs::File;
 use std::io::stdin;
 use std::io::BufRead;
 use std::io::BufReader;
-use std::path::PathBuf;
 use std::io::Cursor;
-use clap::Args;
 use anyhow::Result;
 use anyhow::anyhow;
 use structure::DotBracketVec;
 
-use crate::NucleotideVec;
-
-
-/// Free energy evaluation parameters.
-#[derive(Debug, Args)]
-pub struct EnergyModelArguments {
-    /// Temperature in Celsius
-    #[arg(short, long, default_value = "37.0")]
-    pub temperature: f64,
-
-    /// Parameter file (e.g. rna_turner2004.par)
-    #[arg(short, long, value_name = "FILE")]
-    pub model_parameters: Option<PathBuf>,
-}
-
-impl EnergyModelArguments {
-    /// Return the parameter file path, falling back to crate-relative default.
-    pub fn param_file(&self) -> PathBuf {
-        self.model_parameters.clone().unwrap_or_else(|| {
-            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par"))
-        })
-    }
-}
+use energy::NucleotideVec;
 
 pub fn read_fasta_like_input(s: &str) -> Result<(Option<String>, NucleotideVec, DotBracketVec)> {
     if s == "-" {
@@ -55,7 +31,8 @@ pub fn read_fasta_like_stdin() -> Result<(Option<String>, NucleotideVec, DotBrac
     read_fasta_like(reader)
 }
 
-pub fn read_fasta_like<R: BufRead>(reader: R) -> Result<(Option<String>, NucleotideVec, DotBracketVec)> {
+pub fn read_fasta_like<R: BufRead>(reader: R) -> Result<
+(Option<String>, NucleotideVec, DotBracketVec)> {
     let mut header: Option<String> = None;
     let mut sequence: Option<NucleotideVec> = None;
     let mut structure: Option<DotBracketVec> = None;
@@ -75,7 +52,7 @@ pub fn read_fasta_like<R: BufRead>(reader: R) -> Result<(Option<String>, Nucleot
             header = Some(line.to_string());
         } else if sequence.is_none() {
             let token = line.split_whitespace().next().unwrap();
-            sequence = Some(NucleotideVec::from_lossy(token));
+            sequence = Some(NucleotideVec::try_from(token)?);
         } else if structure.is_none() {
             let token = line.split_whitespace().next().unwrap();
             structure = Some(DotBracketVec::try_from(token)?);
@@ -84,7 +61,10 @@ pub fn read_fasta_like<R: BufRead>(reader: R) -> Result<(Option<String>, Nucleot
     }
     
     let sequence = sequence.ok_or_else(|| anyhow!("Missing sequence line"))?;
-    let structure = structure.ok_or_else(|| anyhow!("Missing structure line"))?;
+    let structure = structure.unwrap_or_else(|| {
+        DotBracketVec::try_from(".".repeat(sequence.len()).as_str())
+            .expect("Failed to construct open chain structure")
+    });
 
     if sequence.len() != structure.len() {
         return Err(anyhow!(

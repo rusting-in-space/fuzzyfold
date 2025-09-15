@@ -12,14 +12,14 @@ there are missing resources to adress them is unsetteling.)
 
 ## Current software (in preparation):
  - **ff-eval**: (Re-)evaluate secondary structures, fuzzy ensemble free energies.
- - **ff-simulate**: Kinfold-like stochastic simulations.
+ - **ff-simulate**: Nucleic acid secondary structure stochastic simulations.
 
 ### WS25 -- projects goals:
  - cotranscriptional folding of large RNAs (+ ALU analysis).
  - findpath/direct path sampling & barrier estimations.
- - smith-waterman / HMM-like read alignments.
  - ff-eval with new energy model & analysis.
  - local flooding algorithms & partition functions (barriers, ?)
+ - potentially: smith-waterman / HMM-like read alignments.
 
 ## Current crates (in preparation):
  - fuzzychain.structure: A library of secondary structure data structures.
@@ -35,6 +35,10 @@ Feel free to reach out and help with any part of this project. Experience with
 other open-source code development projects would be helpful, but is not a
 must.
 
+For benchmarking of the simutation algorithm:
+
+    ```cargo bench --bench stochastic_simulation```
+
 ## Branches: 
  - **master**: well-structured, well-documented, high-coverage, approved, production-ready code.
  - **development**: well-integrated, some documentation, some coverage, unapproved, experimental code.
@@ -45,10 +49,5 @@ must.
  - Single-stranded nucleic acid folding kinetics (Kinfold-style).
  - Cotranscriptional folding and analysis.
  - Domain-level nucleic acid folding interface (dsdobjects, peppercorn).
-
-### Work in progess:
- - energy model
- - SSA
- - LoopStructure global cache interface. (after benchmarking)
 
 
