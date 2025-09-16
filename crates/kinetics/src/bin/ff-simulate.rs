@@ -24,7 +24,7 @@ pub struct SimulationParameters {
     t_ext: f64,
 
     /// Simulation stop time (> t_ext).
-    #[arg(long, default_value_t = 60.)]
+    #[arg(long, default_value_t = 1.)]
     t_end: f64,
 
     /// Number of time points on the linear scale.
@@ -35,6 +35,23 @@ pub struct SimulationParameters {
     #[arg(long, default_value_t = 20)]
     t_log: usize,
 }
+
+impl SimulationParameters {
+    /// Validate that all parameters make sense.
+    pub fn validate(&self) -> Result<()> {
+        if self.t_end <= self.t_ext {
+            bail!("t_end ({}) must be greater than t_ext ({})", self.t_end, self.t_ext);
+        }
+        if self.t_lin == 0 && self.t_log > 1 {
+            bail!("t_lin must be > 0 if t_log > 1 (got t_lin={}, t_log={})", self.t_lin, self.t_log);
+        }
+        if self.k0 <= 0.0 {
+            bail!("k0 must be positive (got {})", self.k0);
+        }
+        Ok(())
+    }
+}
+
 
 #[derive(Debug, Parser)]
 #[command(name = "ff-simulate")]
@@ -83,10 +100,7 @@ fn get_output_times(
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-
-    if cli.simulation.t_lin == 0 && cli.simulation.t_log > 1 {
-        bail!("Invalid combination: t_lin = 0, t_log > 1");
-    }
+    cli.simulation.validate()?;
 
     // --- Build simulator ---
     let model = ViennaRNA::default();
@@ -108,6 +122,11 @@ fn main() -> Result<()> {
         cli.simulation.t_end,
         cli.simulation.t_lin, 
         cli.simulation.t_log);
+
+    // Next idea: 
+    //  - instead of printing, parse into "struct Timepoint"
+    //  - each Timepoint maintains the structures, energies and occupancies .. 
+    //  - after all simulations complete, print the Timepoints in drf format.
 
     let mut t_idx = 0;
     simulator.simulate(
