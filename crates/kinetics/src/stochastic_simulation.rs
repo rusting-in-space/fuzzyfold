@@ -219,7 +219,6 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
     pub fn simulate<R, F>(
         &mut self,
         rng: &mut R,
-        t0: f64,
         t_max: f64,
         mut callback: F,
     )
@@ -227,24 +226,16 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
         R: Rng + ?Sized,
         F: FnMut(f64, &LoopStructure<'a, M>),
     {
-        let mut t = t0;
-        callback(t, &self.loopstructure);
+        let mut t = 0.;
 
-        loop {
+        while t < t_max {
             assert!(self.flux > 0.0, "Flux vanished, no reactions possible");
-            //println!("Mean waiting time {} from {}", 1./self.flux, self.flux);
-            //println!("{:?} {:?}", self.loop_rxns, self.pair_rxns);
 
             // sample waiting time ~ Exp(flux)
-            let tau = -rng.random::<f64>().ln() / self.flux;
-            
+            t += -rng.random::<f64>().ln() / self.flux;
 
-            if t + tau > t_max {
-                t = t_max;
-                callback(t, &self.loopstructure);
-                break;
-            }
-            t += tau;
+            // Callback after waiting time, before applying move.
+            callback(t, &self.loopstructure);
 
             // sample reaction, probably the bottleneck for now
             let mut r = rng.random::<f64>() * self.flux;
@@ -277,7 +268,7 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
                 }
                 found
             };
-            
+
             if let Some((idx, rxn)) = chosen {
                 match rxn {
                     Reaction::Add { i, j, .. } => {
@@ -300,7 +291,6 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
                 panic!("No reaction chosen despite positive flux");
             }
 
-            callback(t, &self.loopstructure);
         }
     }
 }
