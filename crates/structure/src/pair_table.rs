@@ -2,7 +2,6 @@ use std::ops::{Deref, DerefMut};
 use std::convert::TryFrom;
 use crate::StructureError;
 use crate::{DotBracket, DotBracketVec};
-//use crate::{Pair, PairList};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairTable(pub Vec<Option<usize>>);
@@ -94,52 +93,6 @@ impl TryFrom<&DotBracketVec> for PairTable {
 }
 
 
-//impl TryFrom<&PairList> for PairTable {
-//    type Error = StructureError;
-//
-//    fn try_from(pl: &PairList) -> Result<Self, Self::Error> {
-//        let mut table = vec![None; pl.length];
-//
-//        for &Pair(i1, j1) in &pl.pairs {
-//            // Convert 1-based to 0-based
-//            if i1 == j1 {
-//                return Err(StructureError::InvalidToken("self-pairing".to_string(), i1));
-//            }
-//            if i1 == 0 || j1 == 0 || i1 > pl.length || j1 > pl.length {
-//                return Err(StructureError::InvalidToken(
-//                    format!("Invalid 1-based pair ({}, {})", i1, j1),
-//                    i1.max(j1).saturating_sub(1),
-//                ));
-//            }
-//
-//            let (i, j) = (i1 - 1, j1 - 1);
-//
-//            if let Some(prev) = table[i] {
-//                if prev != j {
-//                    return Err(StructureError::InvalidToken(
-//                        format!("Conflict: {} already paired with {}", i + 1, prev + 1),
-//                        i,
-//                    ));
-//                }
-//            }
-//            if let Some(prev) = table[j] {
-//                if prev != i {
-//                    return Err(StructureError::InvalidToken(
-//                        format!("Conflict: {} already paired with {}", j + 1, prev + 1),
-//                        j,
-//                    ));
-//                }
-//            }
-//
-//            table[i] = Some(j);
-//            table[j] = Some(i);
-//        }
-//
-//        Ok(PairTable(table))
-//    }
-//}
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,46 +159,6 @@ mod tests {
         let pt = PairTable::try_from("..").unwrap();
         pt.is_well_formed(0, 3); // j = pt.len(), should panic
     }
-
-    //#[test]
-    //fn test_pair_table_from_pair_list_valid() {
-    //    let pl = PairList {
-    //        length: 6,
-    //        pairs: vec![Pair(1, 6), Pair(2, 5)],
-    //    };
-    //    let pt = PairTable::try_from(&pl).unwrap();
-    //    assert_eq!(pt.0, vec![Some(5), Some(4), None, None, Some(1), Some(0)]);
-    //}
-
-    //#[test]
-    //fn test_pair_table_from_pair_list_out_of_bounds() {
-    //    let pl = PairList {
-    //        length: 4,
-    //        pairs: vec![Pair(1, 5)],
-    //    };
-    //    let err = PairTable::try_from(&pl).unwrap_err();
-    //    assert!(matches!(err, StructureError::InvalidToken(_, _)));
-    //}
-
-    //#[test]
-    //fn test_pair_table_from_pair_list_self_pairing() {
-    //    let pl = PairList {
-    //        length: 4,
-    //        pairs: vec![Pair(2, 2)],
-    //    };
-    //    let err = PairTable::try_from(&pl).unwrap_err();
-    //    assert!(matches!(err, StructureError::InvalidToken(..)));
-    //}
-
-    //#[test]
-    //fn test_pair_table_from_pair_list_conflicting() {
-    //    let pl = PairList {
-    //        length: 6,
-    //        pairs: vec![Pair(1, 6), Pair(1, 5)],
-    //    };
-    //    let err = PairTable::try_from(&pl).unwrap_err();
-    //    assert!(matches!(err, StructureError::InvalidToken(_, _)));
-    //}
 }
 
 

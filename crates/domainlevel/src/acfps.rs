@@ -9,9 +9,8 @@ use structure::{
     DotBracket,
     DotBracketVec, 
     PairTable, 
-    PairList, 
-    Pair,
 };
+use crate::{Pair, PairList};
 use crate::checks::{
     PartialOrder, 
     UnionFind,
@@ -147,7 +146,7 @@ impl TryFrom<&str> for Acfp {
     fn try_from(input: &str) -> Result<Self, Self::Error> {
         let db_path: Vec<DotBracketVec> = input
             .split_whitespace()
-            .map(|s| DotBracketVec::from(s))
+            .map(|s| DotBracketVec::try_from(s).unwrap())
             .collect();
         let length = db_path.len();
         assert_eq!(length, db_path.last().unwrap().len());

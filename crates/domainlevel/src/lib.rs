@@ -8,6 +8,7 @@ mod segments;
 
 mod acfps;
 mod enumerate;
+mod pair_list;
 
 mod rules;
 mod checks;
@@ -19,5 +20,6 @@ pub use enumerate::*;
 pub use acfps::*;
 pub use segments::*;
 pub use domain::*;
+pub use pair_list::*;
 
 

@@ -2,7 +2,8 @@ use std::collections::VecDeque;
 use nohash_hasher::IntMap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use structure::{LoopInfo, LoopTable, PairTable, PairList, Pair};
+use structure::{LoopInfo, LoopTable, PairTable};
+use crate::{PairList, Pair};
 
 #[derive(Debug, Clone)]
 pub struct PartialOrder {

@@ -332,15 +332,3 @@ fn wrap_add1(i: usize, n: usize) -> usize {
     if i + 1 < n { i + 1 } else { 0 }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    //fn test_get_set_basic() {
-    //    let mut table = DPTable::new(2);
-    //    table.set(0, 1, 1, 0, 42);
-    //    assert_eq!(table.get(0, 1, 1, 0), 42);
-    //    assert_eq!(table.get(0, 1, 0, 0), i32::MAX / 2);
-    //}
-
-}

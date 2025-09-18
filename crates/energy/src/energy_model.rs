@@ -80,7 +80,7 @@ mod tests {
 
         struct DummyStructure;
         impl LoopDecomposition for DummyStructure {
-            fn for_each_loop<F: FnMut(&NearestNeighborLoop)>(&self, f: F) {
+            fn for_each_loop<F: FnMut(&NearestNeighborLoop)>(&self, _f: F) {
 
             }
             fn loop_enclosed_by(&self, closing: Option<(usize, usize)>) -> NearestNeighborLoop {

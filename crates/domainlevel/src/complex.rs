@@ -118,27 +118,27 @@ fn parse_kernel(kernel: &str) -> Result<(Vec<String>, DotBracketVec), StructureE
                     sequence.push(inferred);
                     structure.push(DotBracket::Close);
                 }
-                None => return Err(StructureError::InvalidToken(token.to_string(), idx )),
+                None => return Err(StructureError::InvalidToken(token.to_string(), "kernel".to_string(), idx )),
             }
         } else if token.ends_with('(') {
             let seq = token.strip_suffix('(').unwrap();
             if seq.is_empty() {
-                return Err(StructureError::InvalidToken(token.to_string(), idx));
+                return Err(StructureError::InvalidToken(token.to_string(),  "kernel".to_string(), idx));
             }
             sequence.push(seq.to_string());
             structure.push(DotBracket::Open);
             stack.push(sequence.len() - 1);
         } else if token.ends_with(')') {
-            return Err(StructureError::InvalidToken(token.to_string(), idx));
+            return Err(StructureError::InvalidToken(token.to_string(),  "kernel".to_string(), idx));
         } else if token.contains('(') || token.contains(')') {
-            return Err(StructureError::InvalidToken(token.to_string(), idx));
+            return Err(StructureError::InvalidToken(token.to_string(),  "kernel".to_string(), idx));
         } else {
             sequence.push(token.to_string());
             structure.push(DotBracket::Unpaired)
         }
     }
     if !stack.is_empty() {
-        return Err(StructureError::InvalidToken("end of string".to_string(), tokens.len()));
+        return Err(StructureError::InvalidToken("end of string".to_string(),  "kernel".to_string(), tokens.len()));
     }
     Ok((sequence, DotBracketVec(structure)))
 }
