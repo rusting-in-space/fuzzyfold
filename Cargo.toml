@@ -3,7 +3,6 @@ resolver = "3"
 members = ["crates/energy", 
            "crates/kinetics",
            "crates/plotting", 
-           "crates/domainlevel",
            "crates/structure"]
 
 
