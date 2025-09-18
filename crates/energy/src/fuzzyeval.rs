@@ -319,6 +319,10 @@ impl FuzzyEval {
 }
 
 impl EnergyModel for FuzzyEval {
+ 
+    fn temperature(&self) -> f64 {
+        self.temperature
+    }
 
     fn can_pair(&self, b1: Base, b2: Base) -> bool {
         PairTypeRNA::from((b1, b2)).can_pair()

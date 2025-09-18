@@ -47,11 +47,7 @@ impl ViennaRNA {
             //DANGLES should not be destabilizing at temperature changes.
         })
     }
-    
-    pub fn temperature(&self) -> f64 {
-        self.temperature
-    }
-
+   
     pub fn set_temperature(&mut self, temperature: f64) {
         if (self.temperature - temperature).abs() < f64::EPSILON {
             return;
@@ -333,6 +329,10 @@ impl ViennaRNA {
 }
 
 impl EnergyModel for ViennaRNA {
+ 
+    fn temperature(&self) -> f64 {
+        self.temperature
+    }
 
     fn can_pair(&self, b1: Base, b2: Base) -> bool {
         matches!((b1, b2),

@@ -3,6 +3,8 @@ use nohash_hasher::IntMap;
 use nohash_hasher::IntSet;
 use rustc_hash::FxHashMap;
 
+use structure::DotBracket;
+use structure::DotBracketVec;
 use energy::NearestNeighborLoop;
 use energy::LoopDecomposition;
 use energy::EnergyModel;
@@ -318,6 +320,18 @@ pub fn unpaired_pairs_in_loop<E: EnergyModel>(
     pairs
 }
 
+
+impl<'a, M: EnergyModel> From<&LoopStructure<'a, M>> for DotBracketVec {
+    fn from(ls: &LoopStructure<'a, M>) -> Self {
+        // Use the same logic as your Display impl, but avoid allocating a String unnecessarily
+        let mut vec = vec![DotBracket::Unpaired; ls.sequence.len()];
+        for (i, j) in &ls.pair_list {
+            vec[*i] = DotBracket::Open;
+            vec[*j] = DotBracket::Close;
+        }
+        DotBracketVec(vec)
+    }
+}
 
 
 #[cfg(test)]

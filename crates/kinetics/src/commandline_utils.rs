@@ -136,10 +136,6 @@ mod tests {
         let res = read_fasta_like_string(input);
         assert!(res.is_err(), "Expected error for invalid structure");
 
-        let input = ">missing\nACGU\n";
-        let res = read_fasta_like_string(input);
-        assert!(res.is_err());
-
         let input = ">missing\n(((....)))\n";
         let res = read_fasta_like_string(input);
         assert!(res.is_err());

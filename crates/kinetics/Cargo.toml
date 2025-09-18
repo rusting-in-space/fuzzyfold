@@ -13,6 +13,9 @@ clap = "4.5.47"
 anyhow = "1.0.99"
 colored = "3.0.0"
 criterion = "0.7.0"
+ahash = "0.8.12"
+rayon = "1.11.0"
+plotters = "0.3.7"
 
 [[bench]]
 name = "stochastic_simulation"

@@ -3,10 +3,14 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 
-use rand::rng;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+
 use structure::PairTable;
 use energy::ViennaRNA;
 use energy::NucleotideVec;
+use energy::EnergyModel;
+
 use kinetics::LoopStructure;
 use kinetics::LoopStructureSSA;
 use kinetics::Metropolis;
@@ -19,6 +23,7 @@ fn simulate_all_from_file(path: &str) {
     let reader = BufReader::new(file);
     let model = ViennaRNA::default();
     let ratemodel = Metropolis::new(model.temperature(), 1.0);
+    let mut rng = StdRng::seed_from_u64(42);
 
     let mut lines = reader.lines();
     while let Some(Ok(header)) = lines.next() {
@@ -38,9 +43,9 @@ fn simulate_all_from_file(path: &str) {
         let mut simulator = LoopStructureSSA::from((loops, &ratemodel));
 
         simulator.simulate(
-            &mut rng(), 
+            &mut rng, 
             black_box(10.0), 
-            |_t, _ls| { }
+            |_t, _ti, _fl, _ls| { }
         );
     }
 }

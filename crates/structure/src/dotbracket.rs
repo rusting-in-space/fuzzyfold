@@ -6,7 +6,7 @@ use crate::PairTable;
 use crate::MultiPairTable;
 use crate::StructureError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DotBracket {
     Unpaired, // '.'
     Open,     // '('
@@ -39,7 +39,7 @@ impl From<DotBracket> for char {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DotBracketVec(pub Vec<DotBracket>);
 
 impl Deref for DotBracketVec {

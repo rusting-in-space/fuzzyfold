@@ -5,6 +5,8 @@ use crate::Base;
 
 pub trait EnergyModel {
     fn can_pair(&self, b1: Base, b2: Base) -> bool;
+ 
+    fn temperature(&self) -> f64;
 
     fn min_hairpin_size(&self) -> usize;
 
@@ -29,6 +31,10 @@ mod tests {
     impl EnergyModel for MockEnergyModel {
         fn can_pair(&self, b1: Base, b2: Base) -> bool {
             matches!((b1, b2), (A, U) | (U, A) | (C, G) | (G, C))
+        }
+        
+        fn temperature(&self) -> f64 {
+            37.0
         }
 
         fn min_hairpin_size(&self) -> usize {
