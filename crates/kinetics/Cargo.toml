@@ -18,6 +18,7 @@ rayon = "1.11.0"
 plotters = "0.3.7"
 serde = "1.0.225"
 serde_json = "1.0.145"
+indicatif = "0.18.0"
 
 [[bench]]
 name = "stochastic_simulation"

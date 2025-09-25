@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::path::Path;
 use std::path::PathBuf;
 use rayon::prelude::*;
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use rand::rng;
 
 use structure::PairTable;
@@ -168,30 +170,43 @@ fn main() -> Result<()> {
         Timeline::new(&times, Arc::clone(&shared_registry))
     };
 
+    let pb = ProgressBar::new(cli.num_sims as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+        .unwrap()
+        .progress_chars("#>-"),
+    );
+
     let timelines: Vec<Timeline> = (0..cli.num_sims)
         .into_par_iter()
-        .map(|_| {
-            let registry = Arc::clone(&shared_registry);
-            let mut timeline = Timeline::new(&times, registry);
+        .map_init(
+            || pb.clone(), // each thread gets a clone
+            |pb, _| {
+                let registry = Arc::clone(&shared_registry);
+                let mut timeline = Timeline::new(&times, registry);
 
-            let loops = LoopStructure::try_from((&sequence[..], &pairings, &emodel)).unwrap();
-            let mut simulator = LoopStructureSSA::from((loops, &rmodel));
-            let mut t_idx = 0;
-            simulator.simulate(
-                &mut rng(), 
-                cli.simulation.t_end,
-                |t, tinc, _, ls| {
-                    while t_idx < times.len() && t+tinc >= times[t_idx] {
-                        let structure = DotBracketVec::from(ls);
-                        timeline.assign_structure(t_idx, &structure);
-                        t_idx += 1;
-                    }
-                }
-            );
-            timeline
-        })
-        .collect();
-    
+                let loops = LoopStructure::try_from((&sequence[..], &pairings, &emodel)).unwrap();
+                let mut simulator = LoopStructureSSA::from((loops, &rmodel));
+                let mut t_idx = 0;
+                simulator.simulate(
+                    &mut rng(),
+                    cli.simulation.t_end,
+                    |t, tinc, _, ls| {
+                        while t_idx < times.len() && t + tinc >= times[t_idx] {
+                            let structure = DotBracketVec::from(ls);
+                            timeline.assign_structure(t_idx, &structure);
+                            t_idx += 1;
+                        }
+                    },
+                );
+
+                pb.inc(1);
+                timeline
+            },
+        ).collect();
+    pb.finish_with_message("All simulations complete!");
+
     // Master timeline
     for timeline in timelines {
         master.merge(timeline);
