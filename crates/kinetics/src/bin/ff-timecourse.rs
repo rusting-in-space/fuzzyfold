@@ -132,13 +132,20 @@ fn main() -> Result<()> {
     let (header, sequence, structure) = read_fasta_like_input(&cli.input)?;
     let pairings = PairTable::try_from(&structure)?;
 
-    if let Some(h) = header {
-        println!("{}", h.yellow())
-    }
+    let name = if let Some(h) = header {
+        println!("{}", h.yellow());
+        h.strip_prefix('>')
+            .and_then(|s| s.split_whitespace().next())
+            .unwrap_or("anonymous")
+            .to_string()
+    } else {
+        println!("{}", ">anonymous".yellow());
+        "anonymous".to_string()
+    };
     println!("{}", sequence);
 
-    println!("Output after {} simulations: \n - {:?}\n - {:?}",
-        cli.num_sims, cli.kinetics, cli.simulation);
+    println!("Output after {} simulations: \n - {:?}\n - {:?}\n - {:?}",
+        cli.num_sims, cli.kinetics, cli.simulation, cli.energy);
 
     let times = cli.simulation.get_output_times();
     let registry = MacrostateRegistry::from_files(
@@ -170,6 +177,7 @@ fn main() -> Result<()> {
         Timeline::new(&times, Arc::clone(&shared_registry))
     };
 
+    println!("Simulation progress:");
     let pb = ProgressBar::new(cli.num_sims as u64);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -213,7 +221,7 @@ fn main() -> Result<()> {
     }
 
     println!("Final Timeline:\n{}", master);
-    plot_occupancy_over_time(&master, "myplot.svg", cli.simulation.t_ext, cli.simulation.t_end);
+    plot_occupancy_over_time(&master, &format!("ff_{}.svg", name), cli.simulation.t_ext, cli.simulation.t_end);
 
     if let Some(path) = cli.timeline {
         let serial = master.to_serializable();
