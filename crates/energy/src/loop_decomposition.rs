@@ -79,6 +79,40 @@ impl NearestNeighborLoop {
         }
     }
 
+    /// Return all base pairs (closing, inner, and/or branches) as packed u32 keys.
+    /// Exterior loops use 0 as a sentinel closing key.
+    pub fn loop_key(&self) -> Vec<u32> {
+        fn pack(i: usize, j: usize) -> u32 {
+            debug_assert!(i <= u16::MAX as usize, "i={} too large for u16", i);
+            debug_assert!(j <= u16::MAX as usize, "j={} too large for u16", j);
+            ((i as u32) << 16) | (j as u32)
+        }
+
+        match self {
+            NearestNeighborLoop::Hairpin { closing } => {
+                vec![pack(closing.0, closing.1)]
+            }
+            NearestNeighborLoop::Interior { closing, inner } => {
+                vec![
+                    pack(closing.0, closing.1),
+                    pack(inner.0, inner.1),
+                ]
+            }
+            NearestNeighborLoop::Multibranch { closing, branches } => {
+                let mut keys = Vec::with_capacity(1 + branches.len());
+                keys.push(pack(closing.0, closing.1));
+                keys.extend(branches.iter().map(|&(i, j)| pack(i, j)));
+                keys
+            }
+            NearestNeighborLoop::Exterior { branches } => {
+                let mut keys = Vec::with_capacity(1 + branches.len());
+                keys.push(0u32); // fake closing key
+                keys.extend(branches.iter().map(|&(i, j)| pack(i, j)));
+                keys
+            }
+        }
+    }
+
     pub fn classify(
         closing: Option<(usize, usize)>, 
         branches: Vec<(usize, usize)>, 

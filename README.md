@@ -12,7 +12,8 @@ there are missing resources to adress them is unsetteling.)
 
 ## Current software (in preparation):
  - **ff-eval**: (Re-)evaluate secondary structures, fuzzy ensemble free energies.
- - **ff-simulate**: Nucleic acid secondary structure stochastic simulations.
+ - **ff-tajectory**: Single stochastic nucleic acid folding trajectories.
+ - **ff-timecourse**: Stochastic nucleic acid secondary structure ensemble simulations.
 
 ### WS25 -- projects goals:
  - cotranscriptional folding of large RNAs (+ ALU analysis).
@@ -46,8 +47,6 @@ For benchmarking of the simutation algorithm:
 
 ## Roadmap to v1.0
  - EnergyModel interface (NearestNeighbor parameters, ViennaRNA, NUPACK compatibility).
- - Single-stranded nucleic acid folding kinetics (Kinfold-style).
  - Cotranscriptional folding and analysis.
  - Domain-level nucleic acid folding interface (dsdobjects, peppercorn).
-
 

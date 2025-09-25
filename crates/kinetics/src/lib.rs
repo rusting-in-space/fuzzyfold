@@ -1,6 +1,7 @@
 pub mod commandline_utils;
 pub mod timeline;
 pub mod plotting;
+pub mod macrostates;
 
 mod loop_structure;
 mod stochastic_simulation;

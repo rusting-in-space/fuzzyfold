@@ -1,7 +1,6 @@
 use std::fmt;
 use nohash_hasher::IntMap;
 use nohash_hasher::IntSet;
-use rustc_hash::FxHashMap;
 
 use structure::DotBracket;
 use structure::DotBracketVec;
@@ -10,39 +9,122 @@ use energy::LoopDecomposition;
 use energy::EnergyModel;
 use energy::Base;
 
-#[allow(dead_code)]
-pub struct LoopCache {
-    eval_loop: FxHashMap<NearestNeighborLoop, i32>,
-    add_pairs: FxHashMap<NearestNeighborLoop, Vec<(NearestNeighborLoop, NearestNeighborLoop, i32)>>,
+struct LoopCache<'a, M: EnergyModel> {
+    sequence: &'a [Base],
+    model: &'a M,
+    loop_list: IntMap<usize, (NearestNeighborLoop, i32)>,
+    l_indices: IntSet<usize>,
+}
+
+impl<'a, M: EnergyModel> LoopCache<'a, M> {
+
+    pub fn new(sequence: &'a [Base], model: &'a M) -> Self {
+        Self { 
+            sequence,
+            model,
+            loop_list: IntMap::default(),
+            l_indices: IntSet::default(),
+        }
+    }
+
+    pub fn insert_loop(&mut self, combo: &NearestNeighborLoop) -> usize {
+        let energy = self.model.energy_of_loop(self.sequence, combo);
+        let index = self.allocate_index();
+        self.loop_list.insert(index, (combo.to_owned(), energy));
+        index
+    }
+
+    pub fn get_loop_by_index(&self, index: &usize) -> &(NearestNeighborLoop, i32) {
+        self.loop_list.get(&index).expect("Incorrect index")
+    }
+
+    pub fn calc_pair_energy(&mut self, outer_index: usize, inner_index: usize) -> i32 {
+        let (outer, o_en) = self.loop_list.get(&outer_index).expect("Missing outer loop_list entry.");
+        let (inner, i_en) = self.loop_list.get(&inner_index).expect("Missing inner loop_list entry.");
+        let combo = &outer.join_loop(&inner);
+        let combo_energy = self.model.energy_of_loop(self.sequence, &combo);
+        let delta = combo_energy - (o_en + i_en);
+        delta
+    }
+
+    pub fn apply_delete_move(&mut self, outer_index: usize, inner_index: usize, delta: i32) -> usize {
+        let (outer, o_en) = self.loop_list.get(&outer_index).expect("Missing outer loop_list entry.");
+        let (inner, i_en) = self.loop_list.get(&inner_index).expect("Missing inner loop_list entry.");
+        let combo = outer.join_loop(&inner);
+        let combo_energy = (o_en + i_en) - delta;
+
+        // re-use outer_index for the new loop.
+        self.loop_list.insert(outer_index, (combo, combo_energy));
+        self.loop_list.remove(&inner_index);
+        self.l_indices.insert(inner_index);
+        outer_index
+    }
+
+    pub fn apply_addition_move(&mut self, combo_index: usize, combo: NearestNeighborLoop, c_energy: i32, i: u16, j: u16) -> (usize, usize, i32) {
+        let (outer, inner) = combo.split_loop(i as usize, j as usize);
+
+        //NOTE: could look delta up directly by searching loop_list.
+        let outer_energy = self.model.energy_of_loop(self.sequence, &outer);
+        let inner_energy = self.model.energy_of_loop(self.sequence, &inner);
+
+        let outer_index = combo_index;
+        let inner_index = self.allocate_index();
+        self.loop_list.insert(outer_index, (outer, outer_energy));
+        self.loop_list.insert(inner_index, (inner, inner_energy));
+
+        // How does the energy change if we apply the base-pair move.
+        let delta = (outer_energy + inner_energy) - c_energy;
+        (outer_index, inner_index, -delta)
+    }
+
+    fn get_loop_neighbors(&self, index: usize) -> Vec<(u16, u16, i32)> {
+        let (combo, energy) = self.loop_list.get(&index).expect("where's the loop?");
+        let unpaired = combo.unpaired_indices(self.sequence.len());
+
+        let mut neighbors = Vec::new(); 
+        for (idx_i, &i) in unpaired.iter().enumerate() {
+            for &j in &unpaired[idx_i + 1..] {
+                if j <= i + self.model.min_hairpin_size() {
+                    continue;
+                }
+                if self.model.can_pair(self.sequence[i], self.sequence[j]) {
+                    let (outer, inner) = combo.split_loop(i, j);
+                    let outer_energy = self.model.energy_of_loop(self.sequence, &outer);
+                    let inner_energy = self.model.energy_of_loop(self.sequence, &inner);
+                    // How does the free energy change if the move is applied.
+                    let delta = (outer_energy + inner_energy) - energy;
+                    neighbors.push((i as u16, j as u16, delta));
+                }
+            }
+        }
+        neighbors
+    }
+
+    pub fn allocate_index(&mut self) -> usize {
+        if let Some(&x) = self.l_indices.iter().next() {
+            self.l_indices.remove(&x);
+            x
+        } else {
+            self.loop_list.len()
+        }
+    }
 }
 
 pub struct LoopStructure<'a, M: EnergyModel> {
-    sequence: &'a [Base],
-    model: &'a M,
-
-    // They should be thought of "lists", but for easier updates,
-    // they are actually implemented ad IntMaps with some index bookkeeping.
-    // After all, we don't want to update the whole loop_lookup table after
-    // modifying these "lists".
-    loop_list: IntMap<usize, (NearestNeighborLoop, i32)>,
-    l_indices: IntSet<usize>,
-    
-    pair_list: IntMap<usize, usize>,
- 
-    // sequence index to loop_list index 
-    // for unpaired: all i of same loop point to same loop
-    // for pairs, i: outer loop, j: inner loop
-    loop_lookup: IntMap<usize, usize>, 
-
-    // Neighbor Caching --> easy to update locally, fast sampling access
-    loop_neighbors: IntMap<usize, Vec<(usize, usize, i32)>>, // loop_list index to list of (i, j, deltaE)
-    pair_neighbors: IntMap<usize, i32>, // pair_list index to deltaE
+    registry: LoopCache<'a, M>,
+    /// From sequence index to registry index.
+    loop_lookup: IntMap<u16, usize>, 
+    /// registry index to list of (i, j, deltaE)
+    loop_neighbors: IntMap<usize, Vec<(u16, u16, i32)>>,
+    /// Current pairs, i<j where i is the id.
+    pair_list: IntMap<u16, u16>,
+    /// pair id to deltaE
+    pair_neighbors: IntMap<u16, i32>, 
 }
 
 impl<'a, M: EnergyModel> fmt::Debug for LoopStructure<'a, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LoopStructure")
-            .field("num_loops", &self.loop_list.len())
             .field("loop_lookup", &self.loop_lookup)
             .field("num_pairs", &self.pair_list.len())
             .field("num_add_neighbors", &self.loop_neighbors.values().map(|v| v.len()).sum::<usize>())
@@ -54,170 +136,128 @@ impl<'a, M: EnergyModel> fmt::Debug for LoopStructure<'a, M> {
 impl<'a, M: EnergyModel> fmt::Display for LoopStructure<'a, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Convert sequence to string
-        let mut dbr = vec!['.'; self.sequence.len()];
+        let mut dbr = vec!['.'; self.registry.sequence.len()];
         for (i, j) in &self.pair_list {
-            dbr[*i] = '(';
-            dbr[*j] = ')';
+            dbr[*i as usize] = '(';
+            dbr[*j as usize] = ')';
         }
         let dbr_str: String = dbr.into_iter().collect();
         write!(f, "{}", dbr_str)
     }
 }
 
-pub fn allocate_index(indices: &mut IntSet<usize>, fallback: usize) -> usize {
-    indices.iter().next().cloned().map(|x| {
-        indices.remove(&x);
-        x
-    }).unwrap_or(fallback)
-}
-
 
 impl<'a, M: EnergyModel> LoopStructure<'a, M> {
-    pub fn get_add_neighbors(&self) -> Vec<(usize, usize, i32)> {
-        self.loop_neighbors
-            .values()
-            .flat_map(|v| v.iter().cloned())
-            .collect()
+    /// Return all add neighbors, including an index that 
+    /// is necessary to access the actual loop via loop_lookup.
+    pub fn get_add_neighbors_per_loop(&self) -> &IntMap<usize, Vec<(u16, u16, i32)>> {
+        &self.loop_neighbors
     }
  
-    pub fn get_del_neighbors(&self) -> Vec<(usize, usize, i32)> {
+    /// Return all remove neighbors, where all i, j are also
+    /// the indices to access the outer/inner loop via loop_lookup.
+    pub fn get_del_neighbors(&self) -> Vec<(u16, u16, i32)> {
         self.pair_neighbors
             .iter()
             .map(|(&i, &delta_e)| (i, self.pair_list[&i], delta_e))
             .collect()
     }
 
+    /// A pair-table like structure, where each position points to 
+    /// exactly one loop. 
+    pub fn loop_lookup(&self) -> &IntMap<u16, usize> {
+        &self.loop_lookup
+    }
+
     pub fn energy(&self) -> i32 {
-        self.loop_list
+        self.registry.loop_list
             .values()
             .map(|(_, e)| *e)
             .sum()
     }
 
-    pub fn update_pair_neighbors(&mut self, pairs: &[(usize, usize)]
-    ) -> Vec<(usize, usize, i32)> 
+    fn update_pair_neighbors(&mut self,
+        pairs: &[(usize, usize)]
+    ) -> Vec<(u16, u16, i32)> 
     {
-        let mut change = vec![];
-        for (i, j) in pairs {
-            let (outer, outer_energy) = self.loop_list.get(self.loop_lookup.get(i).unwrap()).unwrap();
-            let (inner, inner_energy) = self.loop_list.get(self.loop_lookup.get(j).unwrap()).unwrap();
-            let combo = &outer.join_loop(&inner);
-            let combo_energy = self.model.energy_of_loop(self.sequence, &combo);
-            // How does the free energy change if the move is applied.
-            let delta = combo_energy - (outer_energy + inner_energy);
-            assert_eq!(self.pair_list[i], *j);
-            self.pair_neighbors.insert(*i, delta);
-            change.push((*i, *j, delta));
+        let mut change = Vec::new();
+        for &(i, j) in pairs {
+            let &o_index = self.loop_lookup.get(&(i as u16)).expect("Missing loop_lookup entry for i.");
+            let &i_index = self.loop_lookup.get(&(j as u16)).expect("Missing loop_lookup entry for j.");
+            let delta = self.registry.calc_pair_energy(o_index, i_index);
+            self.pair_neighbors.insert(i as u16, delta);
+            change.push((i as u16, j as u16, delta));
         }
         change
     }
   
-    pub fn loop_neighbors(&self) -> &IntMap<usize, Vec<(usize, usize, i32)>> {
-        &self.loop_neighbors
-    }
- 
-    pub fn loop_lookup(&self) -> &IntMap<usize, usize> {
-        &self.loop_lookup
-    }
-
-     /// Produce a new updated SecStruct.
-    pub fn apply_del_move(&mut self, i: usize, j: usize) -> 
-        ((usize, Vec<(usize, usize, i32)>), Vec<(usize, usize, i32)>
+    pub fn apply_del_move(&mut self, i: u16, j: u16) -> 
+        ((usize, Vec<(u16, u16, i32)>), Vec<(u16, u16, i32)>
     ) {
-        assert_eq!(&j, self.pair_list.get(&i).expect("Missing pair_list entry."));
-        let &lli = self.loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
-        let &llj = self.loop_lookup.get(&j).expect("Missing loop_lookup entry for j.");
-        let (outer, o_en) = self.loop_list.get(&lli).expect("Missing loop_list entry lli.");
-        let (inner, i_en) = self.loop_list.get(&llj).expect("Missing loop_list entry llj.");
+        debug_assert_eq!(&j,
+            self.pair_list.get(&i).expect("Missing pair_list entry."));
+        let &delta = self.pair_neighbors.get(&i).expect("Missing pair_neighbors entry.");
+        self.pair_list.remove(&i); 
+        self.pair_neighbors.remove(&i); 
 
-        // Recompute or get from global cache.
-        let combo = &outer.join_loop(&inner);
-        let delta = self.pair_neighbors.get(&i).expect("Missing pair_neighbors entry.");
-        let combo_energy = (o_en + i_en) + delta; // we are adding the change!
-        //assert_eq!((o_en + i_en) + delta, self.model.energy_of_loop(self.sequence, &combo), "this should add up!");
+        let &o_index = self.loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
+        let &i_index = self.loop_lookup.get(&j).expect("Missing loop_lookup entry for j.");
+        let c_id = self.registry.apply_delete_move(o_index, i_index, -delta);
+        debug_assert_eq!(c_id, o_index); // by convention.
 
-        // Cleanup and re-allocate.
-        self.pair_list.remove(&i); //todo
-        self.pair_neighbors.remove(&i);//todo
+        let loop_neighbors = self.registry.get_loop_neighbors(o_index);
+        self.loop_neighbors.insert(o_index, loop_neighbors.clone());
+        self.loop_neighbors.remove(&i_index).expect("at least empty list.");
 
-        self.loop_list.remove(&lli);
-        self.loop_list.remove(&llj);
-        self.loop_neighbors.remove(&lli).expect("at least empty list.");
-        self.loop_neighbors.remove(&llj).expect("at least empty list.");
-        self.l_indices.insert(llj);
-
-        // We re-use lli for the new loop.
-        self.loop_list.insert(lli, (combo.clone(), combo_energy));
-        let loop_neighbors = get_loop_neighbors(&combo, &combo_energy, self.sequence, self.model);
-        self.loop_neighbors.insert(lli, loop_neighbors.clone());
-
-        for k in &combo.inclusive_unpaired_indices(self.sequence.len()) {
-            assert!(self.loop_lookup[k] == lli || self.loop_lookup[k] == llj);
-            self.loop_lookup.insert(*k, lli);
+        let (combo, _) = self.registry.get_loop_by_index(&o_index);
+        for k in &combo.inclusive_unpaired_indices(self.registry.sequence.len()) {
+            debug_assert!(self.loop_lookup[&(*k as u16)] == o_index || self.loop_lookup[&(*k as u16)] == i_index);
+            self.loop_lookup.insert(*k as u16, o_index);
         }
 
         let pair_changes = self.update_pair_neighbors(&combo.pairs());
-        ((lli, loop_neighbors), pair_changes)
+        ((o_index, loop_neighbors), pair_changes)
     }
 
-    /// Produce a new updated SecStruct.
-    pub fn apply_add_move(&mut self, i: usize, j: usize
+    pub fn apply_add_move(&mut self, i: u16, j: u16
     ) -> (
-    (usize, Vec<(usize, usize, i32)>),
-    (usize, Vec<(usize, usize, i32)>),
-    Vec<(usize, usize, i32)>,
+        (usize, Vec<(u16, u16, i32)>), 
+        (usize, Vec<(u16, u16, i32)>),
+        Vec<(u16, u16, i32)>,
     ) {
-        let model = self.model;
-        let &lli = self.loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
-
-        assert_eq!(lli, 
-            *self.loop_lookup.get(&j).expect("Missing loop_lookup entry for j."),
+        let &c_index = self.loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
+        debug_assert_eq!(&c_index, 
+            self.loop_lookup.get(&j).expect("Missing loop_lookup entry for j."),
             "Missing loop_lookup entry for j."
         );
-
-        let (combo, c_energy) = {
-            let (combo_ref, c_energy) = self.loop_list.get(&lli).expect("Missing loop_list entry lli.");
-            (combo_ref.clone(), c_energy)
-        };
-        let (outer, inner) = combo.split_loop(i, j);
-        //NOTE; could look delta up directly by searching loop_list.
-        let outer_energy = model.energy_of_loop(self.sequence, &outer);
-        let inner_energy = model.energy_of_loop(self.sequence, &inner);
+        let (combo, c_energy) = self.registry.get_loop_by_index(&c_index);
+        let combo_pairs = &combo.pairs();
         // How does the energy change if we apply the base-pair move.
-        let delta = (outer_energy + inner_energy) - c_energy;
+        let (o_id, i_id, delta) = self.registry.apply_addition_move(c_index, combo.clone(), *c_energy, i, j);
 
-        self.loop_list.remove(&lli);
-        self.loop_neighbors.remove(&lli).expect("there must have been at least an empty list");
 
-        // First, let's reuse the lli we just freed.
-        self.loop_list.insert(lli, (outer.clone(), outer_energy));
-        let new_outer_add_neighbors = get_loop_neighbors(
-            &outer, &outer_energy, self.sequence, model);
-        let new_inner_add_neighbors = get_loop_neighbors(
-            &inner, &inner_energy, self.sequence, model);
-        self.loop_neighbors.insert(lli, new_outer_add_neighbors.clone());
+        let new_outer_add_neighbors = self.registry.get_loop_neighbors(o_id);
+        let new_inner_add_neighbors = self.registry.get_loop_neighbors(i_id);
 
-        let llj = allocate_index(&mut self.l_indices, self.loop_list.len());
-        self.loop_list.insert(llj, (inner.clone(), inner_energy));
-        self.loop_neighbors.insert(llj, new_inner_add_neighbors.clone());
-
+        self.loop_neighbors.insert(o_id, new_outer_add_neighbors.clone());
+        self.loop_neighbors.insert(i_id, new_inner_add_neighbors.clone());
         self.pair_list.insert(i, j);
+        self.pair_neighbors.insert(i, delta);
 
-        for k in &outer.inclusive_unpaired_indices(self.sequence.len()) {
-            self.loop_lookup.insert(*k, lli);
+        let (outer, _) = self.registry.get_loop_by_index(&o_id);
+        for k in &outer.inclusive_unpaired_indices(self.registry.sequence.len()) {
+            self.loop_lookup.insert(*k as u16, o_id);
+        }
+        let (inner, _) = self.registry.get_loop_by_index(&i_id);
+        for k in &inner.inclusive_unpaired_indices(self.registry.sequence.len()) {
+            self.loop_lookup.insert(*k as u16, i_id);
         }
 
-        for k in &inner.inclusive_unpaired_indices(self.sequence.len()) {
-            self.loop_lookup.insert(*k, llj);
-        }
+        let mut pair_changes = self.update_pair_neighbors(combo_pairs);
+        pair_changes.push((i, j, delta));
 
-        // How does the energy change if we *revert* the base-pair move.
-        self.pair_neighbors.insert(i, -delta);
-        let mut pair_changes = self.update_pair_neighbors(&combo.pairs());
-        pair_changes.extend(vec![(i, j, -delta)]);
-
-        ((lli, new_outer_add_neighbors),
-         (llj, new_inner_add_neighbors),
+        ((o_id, new_outer_add_neighbors),
+         (i_id, new_inner_add_neighbors),
         pair_changes)
     }
 
@@ -226,108 +266,58 @@ impl<'a, M: EnergyModel> LoopStructure<'a, M> {
 impl<'a, T: LoopDecomposition, M: EnergyModel> TryFrom<(&'a [Base], &T, &'a M)> for LoopStructure<'a, M> {
     type Error = String;
 
-    fn try_from((sequence, pairings, model): (&'a [Base], &T, &'a M)) -> Result<Self, Self::Error> {
-        let mut loop_list = IntMap::default();
-        let mut pair_list = IntMap::default();
-        let mut loop_lookup = IntMap::default();
-        let mut ll_idx = 0;
-        //let mut pl_idx = 0;
+    fn try_from((sequence, pairings, model): (&'a [Base], &T, &'a M)
+    ) -> Result<Self, Self::Error> {
+        let mut registry = LoopCache::new(sequence, model);
+        let mut pair_list: IntMap<u16, u16>  = IntMap::default();
+        let mut loop_lookup: IntMap<u16, usize> = IntMap::default();
 
         // Decomposing the structure into loops and initializing
         // loop_list, pair_list, and loop_lookup. 
         pairings.for_each_loop(|l| {
-            // This it the point at which energy is evaluated and stored.
-            let energy = model.energy_of_loop(sequence, l);
-            loop_list.insert(ll_idx, (l.clone(), energy));
+            let lli = registry.insert_loop(&l);
             if let Some((i, j)) = l.closing() {
-                pair_list.insert(i, j); 
+                pair_list.insert(i as u16, j as u16); 
             }
             for k in &l.inclusive_unpaired_indices(sequence.len()) {
-                loop_lookup.insert(*k, ll_idx);
+                loop_lookup.insert(*k as u16, lli);
             }
-            ll_idx += 1;
         });
 
         // Now we want to get all neighbors where pairs can be added
-        //
         let mut loop_neighbors = IntMap::default();
-        for (nn_idx, (nn_loop, nn_energy)) in loop_list.iter() {
-            let neighbors = get_loop_neighbors(&nn_loop, nn_energy, sequence, model);
-            loop_neighbors.insert(*nn_idx, neighbors);
+        for &nn_idx in registry.loop_list.keys() {
+            let neighbors = registry.get_loop_neighbors(nn_idx);
+            loop_neighbors.insert(nn_idx, neighbors);
         }
 
         let mut pair_neighbors = IntMap::default();
         for (i, j) in pair_list.iter() {
-            let (outer, outer_energy) = loop_list.get(loop_lookup.get(i).unwrap()).unwrap();
-            let (inner, inner_energy) = loop_list.get(loop_lookup.get(j).unwrap()).unwrap();
-            let combo = &outer.join_loop(&inner);
-            let combo_energy = model.energy_of_loop(sequence, &combo);
+            let &o_index = loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
+            let &i_index = loop_lookup.get(&j).expect("Missing loop_lookup entry for j.");
             // How does the free energy change if the move is applied.
-            let delta = combo_energy - (outer_energy + inner_energy);
+            let delta = registry.calc_pair_energy(o_index, i_index);
             pair_neighbors.insert(*i, delta);
         }
 
         Ok(LoopStructure {
-            sequence,
-            model,
-            loop_list,
-            l_indices: IntSet::default(),
-            pair_list,
+            registry,
             loop_lookup,
             loop_neighbors,
+            pair_list,
             pair_neighbors,
         })
     }
 
 }
 
-fn get_loop_neighbors<E: EnergyModel>(
-    nn_loop: &NearestNeighborLoop, 
-    nn_energy: &i32, 
-    sequence: &[Base], 
-    model: &E
-) -> Vec<(usize, usize, i32)> {
-    let mut result = vec![];
-    for (i, j) in unpaired_pairs_in_loop(nn_loop, sequence, model) {
-        let (outer, inner) = nn_loop.split_loop(i, j);
-        let outer_energy = model.energy_of_loop(sequence, &outer);
-        let inner_energy = model.energy_of_loop(sequence, &inner);
-        // How does the free energy change if the move is applied.
-        let delta = (outer_energy + inner_energy) - nn_energy;
-        result.push((i, j, delta));
-    }
-    result
-}
-
-pub fn unpaired_pairs_in_loop<E: EnergyModel>(
-    nn_loop: &NearestNeighborLoop,
-    sequence: &[Base],
-    model: &E,
-) -> Vec<(usize, usize)> {
-    let unpaired = nn_loop.unpaired_indices(sequence.len());
-    // Pair all (i, j) with j > i + 3 and check if pairable
-    let mut pairs = Vec::new();
-    for (idx_i, &i) in unpaired.iter().enumerate() {
-        for &j in &unpaired[idx_i + 1..] {
-            if j <= i + model.min_hairpin_size() {
-                continue;
-            }
-            if model.can_pair(sequence[i], sequence[j]) {
-                pairs.push((i, j));
-            }
-        }
-    }
-    pairs
-}
-
-
 impl<'a, M: EnergyModel> From<&LoopStructure<'a, M>> for DotBracketVec {
     fn from(ls: &LoopStructure<'a, M>) -> Self {
         // Use the same logic as your Display impl, but avoid allocating a String unnecessarily
-        let mut vec = vec![DotBracket::Unpaired; ls.sequence.len()];
+        let mut vec = vec![DotBracket::Unpaired; ls.registry.sequence.len()];
         for (i, j) in &ls.pair_list {
-            vec[*i] = DotBracket::Open;
-            vec[*j] = DotBracket::Close;
+            vec[*i as usize] = DotBracket::Open;
+            vec[*j as usize] = DotBracket::Close;
         }
         DotBracketVec(vec)
     }
@@ -350,7 +340,11 @@ mod tests {
         let mut ls = LoopStructure::try_from((&seq[..], &structure, &model)).unwrap();
 
         // Clone neighbor list so we don’t mutate while iterating
-        let neighbors = ls.get_add_neighbors();
+        let neighbors: Vec<(u16, u16, i32)> = ls
+            .get_add_neighbors_per_loop()
+            .into_iter()
+            .flat_map(|(_, nbrs)| nbrs.into_iter().copied())
+            .collect();
 
         for (i, j, de) in neighbors {
             let initial_energy = ls.energy();

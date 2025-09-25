@@ -91,14 +91,14 @@ fn log_sum_exp(xs: &[f64]) -> f64 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Reaction {
     Add {
-        i: usize,
-        j: usize,
+        i: u16,
+        j: u16,
         delta_e: i32,
         log_rate: f64,
     },
     Del {
-        i: usize,
-        j: usize,
+        i: u16,
+        j: u16,
         delta_e: i32,
         log_rate: f64,
     },
@@ -106,19 +106,19 @@ pub enum Reaction {
 
 impl Reaction {
     pub fn new_add<K: KineticModel>(model: &K, 
-        i: usize, j: usize, delta_e: i32
+        i: u16, j: u16, delta_e: i32
 ) -> Self {
         let rate = model.log_rate(delta_e);
         Reaction::Add { i, j, delta_e, log_rate: rate }
     }
 
     pub fn new_del<K: KineticModel>(model: &K, 
-        i: usize, j: usize, delta_e: i32) -> Self {
+        i: u16, j: u16, delta_e: i32) -> Self {
         let rate = model.log_rate(delta_e);
         Reaction::Del { i, j, delta_e, log_rate: rate }
     }
 
-    pub fn ij(&self) -> (usize, usize) {
+    pub fn ij(&self) -> (u16, u16) {
         match self {
             Reaction::Add { i, j, .. } => (*i, *j),
             Reaction::Del { i, j, .. } => (*i, *j),
@@ -149,7 +149,7 @@ pub struct LoopStructureSSA<'a, M: EnergyModel, K: KineticModel> {
     loop_flux: Option<f64>,
     per_loop_flux: IntMap<usize, f64>,
     per_loop_rxns: IntMap<usize, Vec<Reaction>>,
-    pair_rxns: IntMap<usize, Reaction>
+    pair_rxns: IntMap<u16, Reaction>
 }
 
 impl<'a, M, K> fmt::Debug for LoopStructureSSA<'a, M, K>
@@ -175,7 +175,7 @@ impl<'a, M: EnergyModel, K: KineticModel> From<(LoopStructure<'a, M>, &'a K)>
         let mut per_loop_rxns = IntMap::default();
         let mut loop_logs = Vec::new();
 
-        for (lli, add_neighbors) in loopstructure.loop_neighbors().iter() {
+        for (lli, add_neighbors) in loopstructure.get_add_neighbors_per_loop().iter() {
             let mut logs = Vec::new();
             let mut lrxns = Vec::new();
             for &(i, j, delta) in add_neighbors {
@@ -191,7 +191,7 @@ impl<'a, M: EnergyModel, K: KineticModel> From<(LoopStructure<'a, M>, &'a K)>
             per_loop_rxns.insert(*lli, lrxns);
         }
 
-        let mut pair_rxns: IntMap<usize, Reaction> = IntMap::default();
+        let mut pair_rxns: IntMap<u16, Reaction> = IntMap::default();
         let mut pair_logs = Vec::new();
         for (i, j, delta) in loopstructure.get_del_neighbors() {
             let rxn = Reaction::new_del(ratemodel, i, j, delta);
@@ -254,7 +254,8 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
         //    self.log_flux, self.loop_flux, self.pair_flux);
     }
    
-    pub fn remove_loop_reaction(&mut self, lli: usize) {
+    pub fn remove_loop_reaction(&mut self, i: u16) {
+        let lli = self.loopstructure.loop_lookup().get(&i).unwrap();
         let rxns = self.per_loop_rxns.remove(&lli).expect("Reaction must exist.");
         if rxns.len() == 0 {
             debug_assert!(self.per_loop_flux.remove(&lli).is_none());
@@ -271,8 +272,8 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
         }
     }
 
-    pub fn remove_pair_reaction(&mut self, pli: usize) {
-        let old_rxn = self.pair_rxns.remove(&pli).expect("The reaction to be removed.");
+    pub fn remove_pair_reaction(&mut self, i: u16) {
+        let old_rxn = self.pair_rxns.remove(&i).expect("The reaction to be removed.");
         let lrate = old_rxn.log_rate();
 
         if self.pair_rxns.len() > 0 {
@@ -282,20 +283,17 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
             self.pair_flux = None;
             //NOTE: no log_flux update! Will be recomputed.
         }
-
         let (i, j) = old_rxn.ij();
-        let &lli_outer = self.loopstructure.loop_lookup().get(&i).expect("i -> lli outer");
-        let &lli_inner = self.loopstructure.loop_lookup().get(&j).expect("j -> lli inner");
-        self.remove_loop_reaction(lli_inner);
-        self.remove_loop_reaction(lli_outer);
+        self.remove_loop_reaction(i);
+        self.remove_loop_reaction(j);
     }
 
     pub fn insert_loop_reactions(&mut self, 
         lli: usize, 
-        add_neighbors: Vec<(usize, usize, i32)>
+        add_neighbors: Vec<(u16, u16, i32)>
     ) {
-        let mut logs = Vec::new();
-        let mut lrxns = Vec::new();
+        let mut logs = Vec::with_capacity(add_neighbors.len());
+        let mut lrxns = Vec::with_capacity(add_neighbors.len());
         for (i, j, delta) in add_neighbors {
             let rxn = Reaction::new_add(self.ratemodel, i, j, delta);
             logs.push(rxn.log_rate());
@@ -314,7 +312,7 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
         self.per_loop_rxns.insert(lli, lrxns);
     }
 
-    pub fn update_pair_reactions(&mut self, change: Vec<(usize, usize, i32)>) {
+    pub fn update_pair_reactions(&mut self, change: Vec<(u16, u16, i32)>) {
         for (i, j, delta) in change {
             // then it is an update, otherwise insert!
             if let Some(old) = self.pair_rxns.remove(&i) {
@@ -352,7 +350,6 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
         let mut t = 0.;
 
         while t < t_max {
-
             if let (Some(pf), Some(lf)) = (self.pair_flux, self.loop_flux) {
                 if (log_add(pf, lf) - self.log_flux).abs() > 1e-8 {
                     self.recompute_flux();
@@ -373,10 +370,10 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
            
             if let Some(pf) = self.pair_flux {
                 if pf >= log_thresh {
-                    for (pli, rxn) in self.pair_rxns.iter() {
+                    for rxn in self.pair_rxns.values() {
                         acc = log_add(acc, rxn.log_rate());
                         if acc >= log_thresh {
-                            chosen = Some((*pli, rxn.clone()));
+                            chosen = Some(rxn.clone());
                             break;
                         }
                     }
@@ -392,7 +389,7 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
                         for rxn in rxns {
                             acc = log_add(acc, rxn.log_rate());
                             if acc >= log_thresh {
-                                chosen = Some((*lli, rxn.clone()));
+                                chosen = Some(rxn.clone());
                                 break 'outer;
                             }
                         }
@@ -402,10 +399,10 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
                 }
             }
 
-            if let Some((idx, rxn)) = chosen {
+            if let Some(rxn) = chosen {
                 match rxn {
                     Reaction::Add { i, j, .. } => {
-                        self.remove_loop_reaction(idx);
+                        self.remove_loop_reaction(rxn.ij().0);
                         let ((lli, ami), (llj, amj), pair_changes) = self
                             .loopstructure.apply_add_move(i, j);
                         self.insert_loop_reactions(lli, ami);
@@ -413,7 +410,7 @@ impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
                         self.update_pair_reactions(pair_changes);
                     },
                     Reaction::Del { i, j, .. } => {
-                        self.remove_pair_reaction(idx);
+                        self.remove_pair_reaction(rxn.ij().0);
                         let ((lli, neighbors), pair_changes) = self
                             .loopstructure.apply_del_move(i, j);
                         self.insert_loop_reactions(lli, neighbors);

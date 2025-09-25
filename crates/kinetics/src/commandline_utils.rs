@@ -5,8 +5,8 @@ use std::io::BufReader;
 use std::io::Cursor;
 use anyhow::Result;
 use anyhow::anyhow;
-use structure::DotBracketVec;
 
+use structure::DotBracketVec;
 use energy::NucleotideVec;
 
 pub fn read_fasta_like_input(s: &str) -> Result<(Option<String>, NucleotideVec, DotBracketVec)> {

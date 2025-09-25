@@ -1,6 +1,6 @@
 use plotters::prelude::*;
-use crate::timeline::Macrostate;
 use plotters::style::Palette99;
+
 use crate::timeline::Timeline;
 
 pub fn plot_occupancy_over_time(
@@ -112,10 +112,8 @@ pub fn plot_occupancy_over_time(
     for (i, (id, series)) in trajectories.iter().enumerate() {
         let color = Palette99::pick(i).mix(0.9); // pick a distinct color
 
-        let (name, energy) = match timeline.registry.get(*id) {
-            Macrostate::Explicit(reg) => (reg.name(), reg.energy()),
-            Macrostate::Constraint(_) => ("Constraint", None),
-        };
+        let name = timeline.registry.get(*id).name();
+        let energy = timeline.registry.get(*id).energy();
 
         chart_left.draw_series(LineSeries::new(
                 series.iter().cloned().filter(|(t, _)| *t <= t_lin),
@@ -132,15 +130,15 @@ pub fn plot_occupancy_over_time(
             });
     }
     
-// after loop:
-chart_right
-    .configure_series_labels()
-    .border_style(&BLACK)
-    .background_style(&WHITE.mix(0.8))
-    .position(SeriesLabelPosition::UpperRight)
-        .label_font(("sans-serif", 16).into_font())   // <-- legend font size
-    .draw().unwrap();
-
+    // after loop:
+    chart_right
+        .configure_series_labels()
+        .border_style(&BLACK)
+        .background_style(&WHITE.mix(0.8))
+        .position(SeriesLabelPosition::UpperRight)
+            .label_font(("sans-serif", 16).into_font())   // <-- legend font size
+        .draw().unwrap();
+    
     root.present().unwrap(); // write the PNG
 }
 

@@ -3,12 +3,13 @@ use clap::Parser;
 use anyhow::Result;
 use anyhow::bail;
 use colored::*;
-
+use serde_json;
 use std::sync::Arc;
+use std::path::Path;
 use std::path::PathBuf;
 use rayon::prelude::*;
-
 use rand::rng;
+
 use structure::PairTable;
 use structure::DotBracketVec;
 use energy::ViennaRNA;
@@ -21,7 +22,7 @@ use kinetics::LoopStructureSSA;
 use kinetics::commandline_utils::read_fasta_like_input;
 use kinetics::plotting::plot_occupancy_over_time;
 use kinetics::timeline::Timeline;
-use kinetics::timeline::load_macrostates;
+use kinetics::macrostates::MacrostateRegistry;
 
 #[derive(Debug, Args)]
 pub struct KineticModelParams {
@@ -104,6 +105,10 @@ pub struct Cli {
     #[arg(long, value_name = "FILE", num_args = 1.., required = false)]
     macrostates: Vec<PathBuf>,
 
+    /// Backup/Store timeline in this file.
+    #[arg(long, value_name = "FILE")]
+    timeline: Option<PathBuf>,
+
     #[command(flatten, next_help_heading = "Simulation parameters")]
     simulation: TimelineParameters,
 
@@ -134,7 +139,7 @@ fn main() -> Result<()> {
         cli.num_sims, cli.kinetics, cli.simulation);
 
     let times = cli.simulation.get_output_times();
-    let registry = load_macrostates(
+    let registry = MacrostateRegistry::from_files(
         &cli.macrostates,
         &sequence, 
         Some(&emodel));
@@ -147,12 +152,26 @@ fn main() -> Result<()> {
         ))
         .collect::<Vec<_>>().join("\n"));
 
-    let shared_registy = Arc::new(registry);
+    let shared_registry = Arc::new(registry);
+
+    // If timeline.json exists, reload instead of starting empty
+    let mut master = if let Some(path) = &cli.timeline {
+        if Path::new(path).exists() {
+            println!("Loading existing timeline from: {}", path.display());
+            Timeline::from_file(path, &times, Arc::clone(&shared_registry))?
+        } else {
+            println!("A new timeline file will be created: {}", 
+                path.display());
+            Timeline::new(&times, Arc::clone(&shared_registry))
+        }
+    } else {
+        Timeline::new(&times, Arc::clone(&shared_registry))
+    };
 
     let timelines: Vec<Timeline> = (0..cli.num_sims)
         .into_par_iter()
         .map(|_| {
-            let registry = Arc::clone(&shared_registy);
+            let registry = Arc::clone(&shared_registry);
             let mut timeline = Timeline::new(&times, registry);
 
             let loops = LoopStructure::try_from((&sequence[..], &pairings, &emodel)).unwrap();
@@ -174,13 +193,18 @@ fn main() -> Result<()> {
         .collect();
     
     // Master timeline
-    let mut master = Timeline::new(&times, Arc::clone(&shared_registy));
     for timeline in timelines {
         master.merge(timeline);
     }
 
-    println!("Calculated Timeline:\n{}", master);
+    println!("Final Timeline:\n{}", master);
     plot_occupancy_over_time(&master, "myplot.svg", cli.simulation.t_ext, cli.simulation.t_end);
+
+    if let Some(path) = cli.timeline {
+        let serial = master.to_serializable();
+        let json = serde_json::to_string_pretty(&serial)?;
+        std::fs::write(path, json)?;
+    }
 
     Ok(())
 }
