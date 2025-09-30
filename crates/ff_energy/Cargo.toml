@@ -8,11 +8,10 @@ edition.workspace = true
 [dependencies]
 ff_structure.workspace = true
 
+ahash.workspace = true
 colored.workspace = true
 env_logger.workspace = true
 log.workspace = true
-rand.workspace = true
-rustc-hash.workspace = true
 
 [badges]
 maintenance = { status = "actively-developed" }

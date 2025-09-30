@@ -9,15 +9,13 @@ edition.workspace = true
 ff_structure.workspace = true
 ff_energy.workspace = true
 
-nohash-hasher = "0.2.0"
-rustc-hash = "2.1.1"
-rand = "0.9.2"
-colored = "3.0.0"
-criterion = "0.7.0"
-ahash = "0.8.12"
-plotters = "0.3.7"
-serde = "1.0.225"
-serde_json = "1.0.145"
+ahash.workspace = true
+criterion.workspace = true
+nohash-hasher.workspace = true
+plotters.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [[bench]]
 name = "stochastic_simulation"
