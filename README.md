@@ -27,7 +27,7 @@ open-source code development projects would be helpful, but is not a must.
 
 For benchmarking of the stochastic simutation algorithm:
 
-    ```cargo bench --bench stochastic_simulation```
+    ```cargo bench --workspace```
 
 ### Branches: 
  - **master**: well-structured, well-documented, high-coverage, approved, production-ready code.
