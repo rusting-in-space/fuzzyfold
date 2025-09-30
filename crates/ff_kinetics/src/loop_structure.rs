@@ -2,12 +2,12 @@ use std::fmt;
 use nohash_hasher::IntMap;
 use nohash_hasher::IntSet;
 
-use structure::DotBracket;
-use structure::DotBracketVec;
-use energy::NearestNeighborLoop;
-use energy::LoopDecomposition;
-use energy::EnergyModel;
-use energy::Base;
+use ff_structure::DotBracket;
+use ff_structure::DotBracketVec;
+use ff_energy::NearestNeighborLoop;
+use ff_energy::LoopDecomposition;
+use ff_energy::EnergyModel;
+use ff_energy::Base;
 
 struct LoopCache<'a, M: EnergyModel> {
     sequence: &'a [Base],
@@ -327,9 +327,9 @@ impl<'a, M: EnergyModel> From<&LoopStructure<'a, M>> for DotBracketVec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use structure::PairTable;
-    use energy::ViennaRNA;
-    use energy::NucleotideVec;
+    use ff_structure::PairTable;
+    use ff_energy::ViennaRNA;
+    use ff_energy::NucleotideVec;
 
     #[test]
     fn test_add_then_del_roundtrip() {

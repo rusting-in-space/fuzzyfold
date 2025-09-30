@@ -1,12 +1,57 @@
 use std::fmt;
 use std::fs;
 use std::sync::Arc;
-use anyhow::{Result, bail};
 use nohash_hasher::IntMap;
 use serde::{Serialize, Deserialize};
-use structure::DotBracketVec; 
+use ff_structure::DotBracketVec; 
+use std::{error::Error, result};
 
 use crate::macrostates::MacrostateRegistry;
+
+#[derive(Debug)]
+pub enum TimelineError {
+    Io(std::io::Error),
+    Json(serde_json::Error),
+    TimepointCountMismatch { found: usize, expected: usize },
+    TimeMismatch { file_time: f64, expected_time: f64 },
+    MacrostateNotFound(String),
+}
+
+impl fmt::Display for TimelineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "I/O error: {}", e),
+            Self::Json(e) => write!(f, "JSON parse error: {}", e),
+            Self::TimepointCountMismatch { found, expected } =>
+                write!(f, "Timeline file has {found} timepoints, expected {expected}"),
+            Self::TimeMismatch { file_time, expected_time } =>
+                write!(f, "Time mismatch: {file_time} vs {expected_time}"),
+            Self::MacrostateNotFound(name) =>
+                write!(f, "Macrostate '{name}' not found in registry"),
+        }
+    }
+}
+
+impl Error for TimelineError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Io(e) => Some(e),
+            Self::Json(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+pub type Result<T> = result::Result<T, TimelineError>;
+
+impl From<std::io::Error> for TimelineError {
+    fn from(e: std::io::Error) -> Self { Self::Io(e) }
+}
+
+impl From<serde_json::Error> for TimelineError {
+    fn from(e: serde_json::Error) -> Self { Self::Json(e) }
+}
+
 
 /// One time point with its ensemble of macrostates.
 #[derive(Debug)]
@@ -194,22 +239,21 @@ impl Timeline {
 
         // Sanity check: number of timepoints must match
         if serial.points.len() != times.len() {
-            bail!(
-                "Mismatch: {} timepoints in file, but {} provided times",
-                serial.points.len(),
-                times.len()
-            );
+            return Err(TimelineError::TimepointCountMismatch {
+                found: serial.points.len(),
+                expected: times.len(),
+            });
         }
 
         let mut timeline = Timeline::new(times, Arc::clone(&registry));
 
         for (tp, serial_tp) in timeline.points.iter_mut().zip(serial.points) {
-            assert!(
-                (tp.time - serial_tp.time).abs() < 1e-9,
-                "Time mismatch at point: {} vs {}",
-                tp.time,
-                serial_tp.time
-            );
+            if (tp.time - serial_tp.time).abs() >= 1e-9 {
+                return Err(TimelineError::TimeMismatch {
+                    file_time: serial_tp.time,
+                    expected_time: tp.time,
+                });
+            }
 
             for (name, count) in serial_tp.ensemble {
                 // Look up macrostate by name in registry
@@ -217,7 +261,7 @@ impl Timeline {
                     *tp.ensemble.entry(idx).or_insert(0) += count;
                     tp.counter += count;
                 } else {
-                    bail!("Macrostate '{}' not found in registry", name);
+                    return Err(TimelineError::MacrostateNotFound(name));
                 }
             }
         }

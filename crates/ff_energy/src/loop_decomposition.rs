@@ -2,7 +2,7 @@
 use colored::*; // brings in the `.red()`, `.blue()` etc.
 use std::fmt;
 use std::ops::Range;
-use structure::PairTable;
+use ff_structure::PairTable;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NearestNeighborLoop {

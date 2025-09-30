@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use std::io::{BufRead, BufReader};
 use ahash::AHashMap;
 
-use structure::DotBracketVec;
-use structure::PairTable;
-use energy::NucleotideVec;
-use energy::EnergyModel;
+use ff_structure::DotBracketVec;
+use ff_structure::PairTable;
+use ff_energy::NucleotideVec;
+use ff_energy::EnergyModel;
 
 use crate::{K0, KB};
 

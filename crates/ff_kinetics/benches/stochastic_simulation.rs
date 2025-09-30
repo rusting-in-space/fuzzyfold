@@ -1,22 +1,18 @@
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::hint::black_box;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
-
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-
-use structure::PairTable;
-use energy::ViennaRNA;
-use energy::NucleotideVec;
-use energy::EnergyModel;
-
-use kinetics::LoopStructure;
-use kinetics::LoopStructureSSA;
-use kinetics::Metropolis;
-
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+use ff_structure::PairTable;
+use ff_energy::ViennaRNA;
+use ff_energy::NucleotideVec;
+use ff_energy::EnergyModel;
+use ff_kinetics::LoopStructure;
+use ff_kinetics::LoopStructureSSA;
+use ff_kinetics::Metropolis;
 
 fn simulate_all_from_file(path: &str) {
     let file = File::open(path).expect("Cannot open input file");

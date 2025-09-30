@@ -5,12 +5,13 @@ use env_logger::Builder;
 use clap::{Parser, Args, ArgAction};
 use anyhow;
 
-use energy::ViennaRNA;
-use energy::EnergyModel;
-use structure::PairTable;
-use energy::commandline_utils::ruler;
-use energy::commandline_utils::read_fasta_like_input;
-use energy::commandline_utils::EnergyModelArguments;
+use ff_energy::ViennaRNA;
+use ff_energy::EnergyModel;
+use ff_structure::PairTable;
+
+use fuzzyfold::input_parsers::ruler;
+use fuzzyfold::input_parsers::read_eval_input;
+use fuzzyfold::energy_parsers::EnergyModelArguments;
 
 
 #[derive(Debug, Args)]
@@ -65,7 +66,7 @@ fn main() -> anyhow::Result<()> {
     //    println!("....,....1....,....2....,....3....,....4....,....5....,....6....,....7....,....8");
     //}
 
-    let (header, sequence, structure) = read_fasta_like_input(&cli.eval.input)?;
+    let (header, sequence, structure) = read_eval_input(&cli.eval.input)?;
     if let Some(h) = header {
         println!("{}", h.yellow())
     }

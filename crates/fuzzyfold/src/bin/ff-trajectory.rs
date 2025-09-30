@@ -4,16 +4,15 @@ use colored::*;
 use anyhow::Result;
 
 use rand::rng;
-use structure::PairTable;
-use energy::ViennaRNA;
-use energy::EnergyModel;
-use energy::commandline_utils::EnergyModelArguments;
+use ff_structure::PairTable;
+use ff_energy::ViennaRNA;
+use ff_energy::EnergyModel;
+use ff_kinetics::LoopStructure;
+use ff_kinetics::LoopStructureSSA;
+use ff_kinetics::Metropolis;
 
-use kinetics::LoopStructure;
-use kinetics::LoopStructureSSA;
-use kinetics::Metropolis;
-use kinetics::commandline_utils::read_fasta_like_input;
-
+use fuzzyfold::input_parsers::read_fasta_like_input;
+use fuzzyfold::energy_parsers::EnergyModelArguments;
 //TODO: support seeded rng.
 
 #[derive(Debug, Args)]

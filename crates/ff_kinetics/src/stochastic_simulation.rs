@@ -1,7 +1,7 @@
 use std::fmt;
 use rand::Rng;
 use nohash_hasher::IntMap;
-use energy::EnergyModel;
+use ff_energy::EnergyModel;
 use crate::LoopStructure;
 
 pub const KB: f64 = 0.001987204285; // kcal/(mol*K)

@@ -4,7 +4,7 @@ use colored::*;
 use core::f64;
 use std::i32;
 use std::path::Path;
-use structure::PairTable;
+use ff_structure::PairTable;
 
 use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;

@@ -1,0 +1,20 @@
+[package]
+name = "ff_energy"
+version = "0.0.0"
+publish = false
+
+edition.workspace = true
+
+[dependencies]
+ff_structure.workspace = true
+
+colored.workspace = true
+env_logger.workspace = true
+log.workspace = true
+rand.workspace = true
+rustc-hash.workspace = true
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+

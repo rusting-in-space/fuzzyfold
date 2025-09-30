@@ -5,12 +5,12 @@ use clap::{Parser, Args, ArgAction};
 use anyhow::Result;
 use anyhow::anyhow;
 
-use energy::ViennaRNA;
-use energy::EnergyModel;
-use energy::NucleotideVec;
-use structure::PairTable;
-use structure::DotBracketVec;
-use energy::commandline_utils::EnergyModelArguments;
+use ff_energy::ViennaRNA;
+use ff_energy::EnergyModel;
+use ff_energy::NucleotideVec;
+use ff_structure::PairTable;
+use ff_structure::DotBracketVec;
+use fuzzyfold::energy_parsers::EnergyModelArguments;
 
 
 #[derive(Debug, Args)]

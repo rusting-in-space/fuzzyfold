@@ -2,41 +2,37 @@
 
 An open source collection of nucleic acid folding algorithms.
 
-**Note**: This is a _very_ early stage, quickly developing, coding project. You are
-welcome to use it for research, but be prepared for frustration from drastic
-interface changes.
+**Note**: This is a _very_ early stage, quickly developing, coding project. You
+are welcome to use it for research, but be prepared for frustration from
+drastic interface changes. You may use GitHubs issues for suggestions, but you
+are also welcome to reach out directly at this point.
 
-You may use GitHubs issues for suggestions, but we can also just schedule a
-zoom call at this point. (The thought of an exploding issues section while 
-there are missing resources to adress them is unsetteling.)
-
-## Current software (in preparation):
- - **ff-eval**: (Re-)evaluate secondary structures, fuzzy ensemble free energies.
+## Current software:
+ - **ff-eval**: Free energy evaluation details for secondary structures.
  - **ff-tajectory**: Single stochastic nucleic acid folding trajectories.
  - **ff-timecourse**: Stochastic nucleic acid secondary structure ensemble simulations.
 
 ### WS25 -- projects goals:
- - cotranscriptional folding of large RNAs (+ ALU analysis).
- - findpath/direct path sampling & barrier estimations.
- - ff-eval with new energy model & analysis.
- - local flooding algorithms & partition functions (barriers, ?)
- - potentially: smith-waterman / HMM-like read alignments.
+ 1. Cotranscriptional folding of large RNAs.
+ 2. Direct path sampling & free energy barrier estimations.
+ 3. Energy model refinement for ViennaRNA, compatibility with other models.
+ 4. New models for coaxial stacking and salt dependency.
+ 5. Flooding algorithms & macrostate partition functions.
 
-## Current crates (in preparation):
- - fuzzychain.structure: A library of secondary structure data structures.
- - fuzzychain.energy: Secondary structure energy evaluation.
- - fuzzychain.kinetics: Kinetic folding of nucleic acids.
+## Current crates:
+ - fuzzychain.structure: Common secondary structure data structures.
+ - fuzzychain.energy: Secondary structure free energy evaluation.
+ - fuzzychain.kinetics: Stochastic folding kinetics for nucleic acids.
 
 ### Early stage crates:
- - fuzzychain.domainlevel: Domain-level secondary structure kinetics.
  - fuzzychain.plotting: Utilities for visualization.
+ - fuzzychain.domainlevel: Domain-level secondary structure kinetics.
 
 # Developer notes:
-Feel free to reach out and help with any part of this project. Experience with
-other open-source code development projects would be helpful, but is not a
-must.
+Feel free to reach out and contribute to this project. Experience with other
+open-source code development projects would be helpful, but is not a must.
 
-For benchmarking of the simutation algorithm:
+For benchmarking of the stochastic simutation algorithm:
 
     ```cargo bench --bench stochastic_simulation```
 
@@ -45,8 +41,4 @@ For benchmarking of the simutation algorithm:
  - **development**: well-integrated, some documentation, some coverage, unapproved, experimental code.
  - **feature-_name_**: early code proposals.
 
-## Roadmap to v1.0
- - EnergyModel interface (NearestNeighbor parameters, ViennaRNA, NUPACK compatibility).
- - Cotranscriptional folding and analysis.
- - Domain-level nucleic acid folding interface (dsdobjects, peppercorn).
 

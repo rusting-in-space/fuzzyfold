@@ -1,6 +1,5 @@
 pub mod parameter_parsing;
 pub mod coaxial_stacking;
-pub mod commandline_utils;
 
 mod nucleotides;
 mod loop_decomposition;
