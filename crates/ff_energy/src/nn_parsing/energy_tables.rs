@@ -1,8 +1,6 @@
 
 use std::fmt;
-use std::fs::File;
-use std::path::Path;
-use std::io::{BufRead, BufReader};
+use std::io::BufRead;
 use ahash::AHashMap;
 
 use crate::nn_parsing::ParamFileSection;
@@ -252,13 +250,7 @@ impl EnergyTables {
         }
     }
 
-    pub fn from_parameter_file<P: AsRef<Path>>(path: P) -> Result<Self, ParamError> {
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        Self::from_reader(reader)
-    }
-
-    fn from_reader<R: BufRead>(reader: R) -> Result<Self, ParamError> {
+    pub fn from_reader<R: BufRead>(reader: R) -> Result<Self, ParamError> {
         let mut tables = EnergyTables::default();
         let mut section = ParamFileSection::None;
 

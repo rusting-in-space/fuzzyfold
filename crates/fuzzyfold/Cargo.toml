@@ -1,9 +1,9 @@
 [package]
 name = "fuzzyfold"
-version = "0.1.1"
-description.workspace = true
-documentation.workspace = true
-keywords.workspace = true
+version = "0.1.2"
+description = "Nucleic acid secondary structure kinetics."
+documentation = "https://docs.rs/fuzzyfold"
+keywords = ["dna", "rna", "secondary-structure", "kinetics", "nearest-neighbor"]
 readme = "../../README.md"
 
 edition.workspace = true

@@ -12,7 +12,6 @@ use rand::rng;
 
 use ff_structure::PairTable;
 use ff_structure::DotBracketVec;
-use ff_energy::ViennaRNA;
 use ff_energy::EnergyModel;
 use ff_kinetics::Metropolis;
 use ff_kinetics::LoopStructure;
@@ -59,7 +58,7 @@ fn main() -> Result<()> {
     cli.simulation.validate()?;
 
     // --- Build simulator ---
-    let emodel = ViennaRNA::default();
+    let emodel = cli.energy.build_model();
     let rmodel = Metropolis::new(emodel.temperature(), cli.kinetics.k0);
 
     let (header, sequence, structure) = read_fasta_like_input(&cli.input)?;

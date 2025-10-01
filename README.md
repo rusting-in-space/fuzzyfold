@@ -16,9 +16,9 @@ are also welcome to reach out directly at this point.
 (Other software is work in progress and not published to crates.io)
 
 ## Current fuzzyfold crates (preliminary):
- - fuzzyfold::structure: Common secondary structure data structures.
- - fuzzyfold::energy: Secondary structure free energy evaluation.
- - fuzzyfold::kinetics: Stochastic folding kinetics for nucleic acids.
+ - ff_stucture: Common secondary structure data structures.
+ - ff_energy: Secondary structure free energy evaluation.
+ - ff_kinetics: Stochastic folding kinetics for nucleic acids.
 
 (Other crates are work in progress and not published to crates.io)
 

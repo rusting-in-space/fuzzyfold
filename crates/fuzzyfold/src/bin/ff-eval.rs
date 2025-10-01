@@ -1,11 +1,10 @@
 use std::io::Write;
-use log::{info, debug};
+use log::info;
 use colored::*;
 use env_logger::Builder;
 use clap::{Parser, Args, ArgAction};
 use anyhow;
 
-use ff_energy::ViennaRNA;
 use ff_energy::EnergyModel;
 use ff_structure::PairTable;
 
@@ -56,15 +55,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     init_logging(cli.eval.verbose);
 
-    debug!("Using parameter file: {:?}", cli.energy.param_file());
-    debug!("Temperature: {} °C", cli.energy.temperature);
-    let mut model = ViennaRNA::from_parameter_file(cli.energy.param_file())?;
-    model.set_temperature(cli.energy.temperature);
-
-    //if atty::is(Stream::Stdin) {
-    //    println!("Enter dot-bracket strings (one per line). Provide empty line to finish:");
-    //    println!("....,....1....,....2....,....3....,....4....,....5....,....6....,....7....,....8");
-    //}
+    let model = cli.energy.build_model();
 
     let (header, sequence, structure) = read_eval_input(&cli.eval.input)?;
     if let Some(h) = header {

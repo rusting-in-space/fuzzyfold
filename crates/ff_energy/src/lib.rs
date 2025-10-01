@@ -1,3 +1,6 @@
+/// Shipping parameter files with the crate.
+pub mod parameters;
+
 /// Parameter file parsing & corresponding energy tables.
 pub mod nn_parsing;
 

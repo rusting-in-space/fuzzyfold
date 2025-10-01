@@ -1,11 +1,13 @@
 use log::info;
 use colored::*; 
 
-use core::f64;
-use std::i32;
+use std::fs::File;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::path::Path;
 use ff_structure::PairTable;
 
+use crate::parameters::TURNER_2004;
 use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use crate::Base;
@@ -32,21 +34,30 @@ pub struct ViennaRNA {
 impl ViennaRNA {
 
     pub fn default() -> Self {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/params/rna_turner2004.par");
-        ViennaRNA::from_parameter_file(path)
+        ViennaRNA::from_parameter_str(TURNER_2004)
             .expect("Built-in Turner 2004 parameter file must be valid")
     }
 
     pub fn from_parameter_file<P: AsRef<Path>>(path: P) -> Result<Self, ParamError> {
-        let energy_tables = EnergyTables::from_parameter_file(path)?;
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        Self::from_reader(reader)
+    }
+
+    pub fn from_parameter_str(s: &str) -> Result<Self, ParamError> {
+        let cursor = std::io::Cursor::new(s);
+        Self::from_reader(cursor)
+    }
+
+    fn from_reader<R: BufRead>(reader: R) -> Result<Self, ParamError> {
+        let energy_tables = EnergyTables::from_reader(reader)?;
         Ok(ViennaRNA {
             min_hp_size: 3,
             temperature: 37.0,
             energy_tables,
-            //DANGLES should not be destabilizing at temperature changes.
         })
     }
-   
+
     pub fn set_temperature(&mut self, temperature: f64) {
         if (self.temperature - temperature).abs() < f64::EPSILON {
             return;
