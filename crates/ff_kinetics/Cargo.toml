@@ -1,6 +1,6 @@
 [package]
 name = "ff_kinetics"
-version = "0.1.0"
+version = "0.1.1"
 description = "fuzzyfold's stochastic secondary structure simulations."
 readme = "../../README.md"
 

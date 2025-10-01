@@ -1,6 +1,6 @@
 [package]
 name = "fuzzyfold"
-version = "0.1.0"
+version = "0.1.1"
 description.workspace = true
 readme = "../../README.md"
 
@@ -11,11 +11,23 @@ documentation.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+autobins = false
+
 [[bin]]
-# Experimental code project.
-name = "ff-reval"
-path = "src/bin/ff-reval.rs"
-publish = false
+name = "ff-eval"
+path = "src/bin/ff-eval.rs"
+
+[[bin]]
+name = "ff-randseq"
+path = "src/bin/ff-randseq.rs"
+
+[[bin]]
+name = "ff-timecourse"
+path = "src/bin/ff-timecourse.rs"
+
+[[bin]]
+name = "ff-trajectory"
+path = "src/bin/ff-trajectory.rs"
 
 [dependencies]
 ff_structure.workspace = true

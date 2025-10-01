@@ -8,19 +8,19 @@
 //! This crate re-exports the main functionality from its submodules.
 
 
-/// Exposing fuzzyfold::structure. A collection of practical data structures
-/// for RNA structure representations. 
+/// Exposing ff_structure as fuzz/* yfold::structure. A collection of practical data structures for
+/// RNA structure representati */ons. 
 pub mod structure {
     pub use ::ff_structure::*;
 }
 
-/// Exposing fuzzyfold::energy. Handling of nucleotide sequences, nearest
-/// neighbor loop decompositions and free energy evaluation models.
+/// Exposing ff_energy as fuzzyfold::energy. Handling of nucleotide sequences, nearest neighbor
+/// loop decompositions and free energy evaluation models.
 pub mod energy {
     pub use ::ff_energy::*;
 }
 
-/// Exposing fuzzyfold::kinetics. The main stochastic simulation framework,
+/// Exposing ff_kinetics as fuzzyfold::kinetics. The main stochastic simulation framework,
 /// introducing rate models, loop_structures, macrostates and time courses.
 pub mod kinetics {
     pub use ::ff_kinetics::*;

@@ -1,6 +1,6 @@
 [package]
 name = "ff_energy"
-version = "0.1.0"
+version = "0.1.1"
 description = "fuzzyfold's nearest neighbor free energy evaluations."
 readme = "../../README.md"
 
