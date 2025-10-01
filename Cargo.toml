@@ -11,7 +11,7 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/bad-ants-fleet/fuzzyfold"
 documentation = "https://docs.rs/fuzzyfold"
-keywords = ["nucleic acids", "secondary structure", "kinetics", "nearest neighbor"]
+keywords = ["dna", "rna", "secondary-structure", "kinetics", "nearest-neighbor"]
 categories = [
     "science",
     "science::bioinformatics",
@@ -21,9 +21,9 @@ categories = [
 
 [workspace.dependencies]
 # local crates
-ff_energy    = { path = "./crates/ff_energy", version = "0.1.0" }
-ff_structure = { path = "./crates/ff_structure", version = "0.1.0" }
-ff_kinetics  = { path = "./crates/ff_kinetics", version = "0.1.0" }
+ff_energy    = { path = "./crates/ff_energy", version = "0.1.1" }
+ff_structure = { path = "./crates/ff_structure", version = "0.1.1" }
+ff_kinetics  = { path = "./crates/ff_kinetics", version = "0.1.1" }
 
 # shared crates
 ahash = "0.8.12"
