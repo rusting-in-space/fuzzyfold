@@ -3,7 +3,7 @@ use anyhow::Result;
 use anyhow::bail;
 
 #[derive(Debug, Args)]
-pub struct KineticModelParams {
+pub struct RateModelParams {
     /// Metropolis rate constant (must be > 0).
     #[arg(long, default_value_t = 1e6)]
     pub k0: f64,

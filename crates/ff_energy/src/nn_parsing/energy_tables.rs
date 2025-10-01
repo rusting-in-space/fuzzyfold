@@ -5,8 +5,8 @@ use std::path::Path;
 use std::io::{BufRead, BufReader};
 use ahash::AHashMap;
 
-use crate::parameter_parsing::ParamFileSection;
-use crate::parameter_parsing::SectionParser;
+use crate::nn_parsing::ParamFileSection;
+use crate::nn_parsing::SectionParser;
 use crate::NucleotideVec;
 use crate::BCOUNT as B;
 use crate::PCOUNT as P;

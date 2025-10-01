@@ -3,6 +3,8 @@ use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use crate::Base;
 
+pub const K0: f64 = 273.15;
+
 pub trait EnergyModel {
     fn can_pair(&self, b1: Base, b2: Base) -> bool;
  

@@ -3,55 +3,7 @@ use rand::Rng;
 use nohash_hasher::IntMap;
 use ff_energy::EnergyModel;
 use crate::LoopStructure;
-
-pub const KB: f64 = 0.001987204285; // kcal/(mol*K)
-pub const K0: f64 = 273.15;
-
-pub trait KineticModel {
-    /// Given ΔE (in kcal/mol) and maybe other info, return the rate constant
-    fn rate(&self, delta_e: i32) -> f64;
-    fn log_rate(&self, delta_e: i32) -> f64 {
-        // Default, better be overwitten.
-        self.rate(delta_e).ln()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Metropolis {
-    kt: f64, // k_B * T in kcal/mol
-    k0: f64,
-}
-
-impl Metropolis {
-    pub fn new(celsius: f64, k0: f64) -> Self {
-        if k0 <= 0. {
-            panic!("k0 must be positive!");
-        }
-        let t_kelvin = celsius + K0;
-        Self { 
-            kt: KB * t_kelvin,
-            k0,
-        }
-    }
-}
-
-impl KineticModel for Metropolis {
-    fn rate(&self, delta_e: i32) -> f64 {
-        if delta_e <= 0 {
-            self.k0
-        } else {
-            self.k0 * ((-delta_e as f64 / 100.) / self.kt).exp()
-        }
-    }
-
-    fn log_rate(&self, delta_e: i32) -> f64 {
-        if delta_e <= 0 {
-            self.k0.ln()
-        } else {
-            self.k0.ln() + ((-delta_e as f64 / 100.) / self.kt)
-        }
-    }
-}
+use crate::RateModel;
 
 fn log_add(a: f64, b: f64) -> f64 {
     if a == f64::NEG_INFINITY { return b; }
@@ -105,14 +57,14 @@ pub enum Reaction {
 }
 
 impl Reaction {
-    pub fn new_add<K: KineticModel>(model: &K, 
+    pub fn new_add<K: RateModel>(model: &K, 
         i: u16, j: u16, delta_e: i32
 ) -> Self {
         let rate = model.log_rate(delta_e);
         Reaction::Add { i, j, delta_e, log_rate: rate }
     }
 
-    pub fn new_del<K: KineticModel>(model: &K, 
+    pub fn new_del<K: RateModel>(model: &K, 
         i: u16, j: u16, delta_e: i32) -> Self {
         let rate = model.log_rate(delta_e);
         Reaction::Del { i, j, delta_e, log_rate: rate }
@@ -141,7 +93,7 @@ impl Reaction {
 
 }
 
-pub struct LoopStructureSSA<'a, M: EnergyModel, K: KineticModel> {
+pub struct LoopStructureSSA<'a, M: EnergyModel, K: RateModel> {
     loopstructure: LoopStructure<'a, M>, // owns the RNA folding state
     ratemodel: &'a K,
     log_flux: f64,
@@ -155,11 +107,11 @@ pub struct LoopStructureSSA<'a, M: EnergyModel, K: KineticModel> {
 impl<'a, M, K> fmt::Debug for LoopStructureSSA<'a, M, K>
 where
     M: EnergyModel,
-    K: KineticModel + fmt::Debug,
+    K: RateModel + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LoopStructureSSA")
-            .field("ratemodel", &self.ratemodel)   // prints Debug for kinetic model
+            .field("ratemodel", &self.ratemodel)   // prints Debug for RateModel
             .field("loopstructure", &format!("{}", self.loopstructure))
             .field("flux", &self.log_flux)
             //.field("num_reactions", &self.reactions.len())
@@ -167,7 +119,7 @@ where
     }
 }
 
-impl<'a, M: EnergyModel, K: KineticModel> From<(LoopStructure<'a, M>, &'a K)>
+impl<'a, M: EnergyModel, K: RateModel> From<(LoopStructure<'a, M>, &'a K)>
     for LoopStructureSSA<'a, M, K>
 {
     fn from((loopstructure, ratemodel): (LoopStructure<'a, M>, &'a K)) -> Self {
@@ -231,7 +183,7 @@ impl<'a, M: EnergyModel, K: KineticModel> From<(LoopStructure<'a, M>, &'a K)>
     }
 }
 
-impl<'a, M: EnergyModel, K: KineticModel> LoopStructureSSA<'a, M, K> {
+impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
     pub fn current_structure(&self) -> String {
         format!("{}", self.loopstructure)
     }

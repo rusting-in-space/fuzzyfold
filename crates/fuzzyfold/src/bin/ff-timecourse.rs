@@ -17,13 +17,13 @@ use ff_energy::EnergyModel;
 use ff_kinetics::Metropolis;
 use ff_kinetics::LoopStructure;
 use ff_kinetics::LoopStructureSSA;
-use ff_kinetics::plotting::plot_occupancy_over_time;
 use ff_kinetics::timeline::Timeline;
+use ff_kinetics::timeline_plotting::plot_occupancy_over_time;
 use ff_kinetics::macrostates::MacrostateRegistry;
 
 use fuzzyfold::input_parsers::read_fasta_like_input;
 use fuzzyfold::energy_parsers::EnergyModelArguments;
-use fuzzyfold::kinetics_parsers::KineticModelParams;
+use fuzzyfold::kinetics_parsers::RateModelParams;
 use fuzzyfold::kinetics_parsers::TimelineParameters;
 
 #[derive(Debug, Parser)]
@@ -48,7 +48,7 @@ pub struct Cli {
     simulation: TimelineParameters,
 
     #[command(flatten, next_help_heading = "Kinetic model parameters")]
-    kinetics: KineticModelParams,
+    kinetics: RateModelParams,
 
     #[command(flatten, next_help_heading = "Energy model parameters")]
     energy: EnergyModelArguments,

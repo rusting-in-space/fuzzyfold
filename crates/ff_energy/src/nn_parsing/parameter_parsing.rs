@@ -11,7 +11,7 @@
 /// Importing only EnergyTables and it's indices.
 use crate::{Base, NucleotideVec};
 use crate::PairTypeRNA;
-use crate::EnergyTables;
+use crate::nn_parsing::EnergyTables;
 
 const PARAM_FILE_PAIR_ORDER: [PairTypeRNA; 7] = [
     PairTypeRNA::CG,
@@ -378,9 +378,9 @@ macro_rules! impl_misc_parser {
     };
 }
 
-impl_misc_parser!(MLParams, ml_params, crate::energy_tables::MLParams);
-impl_misc_parser!(Ninio, ninio, crate::energy_tables::NINIO);
-impl_misc_parser!(Misc, misc, crate::energy_tables::Misc);
+impl_misc_parser!(MLParams, ml_params, crate::nn_parsing::energy_tables::MLParams);
+impl_misc_parser!(Ninio, ninio, crate::nn_parsing::energy_tables::NINIO);
+impl_misc_parser!(Misc, misc, crate::nn_parsing::energy_tables::Misc);
 
 macro_rules! impl_sequence_parser {
     ($struct_name:ident, $field:ident) => {

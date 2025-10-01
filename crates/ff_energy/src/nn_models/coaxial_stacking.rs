@@ -1,3 +1,4 @@
+#[doc(hidden)]
 
 use std::fmt;
 

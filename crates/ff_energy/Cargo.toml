@@ -1,9 +1,15 @@
 [package]
 name = "ff_energy"
-version = "0.0.0"
-publish = false
+version = "0.1.0"
+description = "fuzzyfold's nearest neighbor free energy evaluations."
+readme = "../../README.md"
 
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 ff_structure.workspace = true

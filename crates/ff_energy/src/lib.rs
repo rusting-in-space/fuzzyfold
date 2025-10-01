@@ -1,19 +1,22 @@
-pub mod parameter_parsing;
-pub mod coaxial_stacking;
+/// Parameter file parsing & corresponding energy tables.
+pub mod nn_parsing;
 
+/// Various nearest neighbor model implementations. 
+mod nn_models;
+
+/// Base, NucleotideVec, PairTypeRNA, ....
 mod nucleotides;
+
+/// Everything for loop decomosition! 
 mod loop_decomposition;
-mod energy_tables;
+
+/// The energy model trait.
 mod energy_model;
-mod viennarna;
-mod fuzzyeval;
 
 pub use nucleotides::*;
 pub use loop_decomposition::*;
-pub use energy_tables::*;
 pub use energy_model::*;
-pub use viennarna::*;
-pub use fuzzyeval::*;
+pub use nn_models::*;
 
 
 

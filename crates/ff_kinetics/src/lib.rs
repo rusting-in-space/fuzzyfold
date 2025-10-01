@@ -1,9 +1,12 @@
 pub mod timeline;
-pub mod plotting;
+pub mod timeline_io;
+pub mod timeline_plotting;
 pub mod macrostates;
 
+mod rate_model;
 mod loop_structure;
 mod stochastic_simulation;
 
+pub use rate_model::*;
 pub use loop_structure::*;
 pub use stochastic_simulation::*;

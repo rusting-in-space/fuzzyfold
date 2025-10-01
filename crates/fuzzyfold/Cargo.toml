@@ -1,18 +1,21 @@
 [package]
 name = "fuzzyfold"
 version = "0.1.0"
+description.workspace = true
+readme = "../../README.md"
+
 edition.workspace = true
 license.workspace = true
-description.workspace = true
 repository.workspace = true
 documentation.workspace = true
 keywords.workspace = true
 categories.workspace = true
-readme = "../../README.md"
 
-[lib]
-doctest = false
-path = "src/lib.rs"
+[[bin]]
+# Experimental code project.
+name = "ff-reval"
+path = "src/bin/ff-reval.rs"
+publish = false
 
 [dependencies]
 ff_structure.workspace = true

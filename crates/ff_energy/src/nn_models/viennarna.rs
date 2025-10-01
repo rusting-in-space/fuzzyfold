@@ -10,11 +10,10 @@ use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
 use crate::Base;
 use crate::PairTypeRNA;
-use crate::EnergyTables;
-use crate::ParamError;
+use crate::nn_parsing::EnergyTables;
+use crate::nn_parsing::ParamError;
 use crate::EnergyModel;
-
-const K0: f64 = 273.15;
+use crate::K0;
 
 /// The default ViennaRNA-v2.6 energy model.
 ///

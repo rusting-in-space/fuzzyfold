@@ -16,7 +16,7 @@ use fuzzyfold::energy_parsers::EnergyModelArguments;
 //TODO: support seeded rng.
 
 #[derive(Debug, Args)]
-pub struct KineticModelParams {
+pub struct RateModelParams {
     /// Metropolis rate constant (must be > 0).
     #[arg(long, default_value_t = 1.0)]
     pub k0: f64,
@@ -35,7 +35,7 @@ pub struct Cli {
     t_end: f64,
 
     #[command(flatten, next_help_heading = "Kinetic model parameters")]
-    kinetics: KineticModelParams,
+    kinetics: RateModelParams,
 
     #[command(flatten, next_help_heading = "Energy model parameters")]
     energy: EnergyModelArguments,

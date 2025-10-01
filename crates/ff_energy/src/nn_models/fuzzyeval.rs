@@ -1,7 +1,7 @@
-use core::f64;
-use std::i32;
-use std::path::Path;
+//! Preliminary, not functional.
+//!
 
+use std::path::Path;
 
 use crate::NearestNeighborLoop;
 use crate::LoopDecomposition;
