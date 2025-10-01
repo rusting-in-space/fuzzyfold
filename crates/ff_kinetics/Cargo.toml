@@ -2,15 +2,15 @@
 name = "ff_kinetics"
 version = "0.1.1"
 description = "fuzzyfold's stochastic secondary structure simulations."
+documentation = "https://docs.rs/ff_kinetics"
+keywords = ["dna", "rna", "secondary-structure", "kinetics", "nearest-neighbor"]
 readme = "../../README.md"
 
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 documentation.workspace = true
-keywords.workspace = true
 categories.workspace = true
-
 
 [dependencies]
 ff_structure.workspace = true
@@ -27,3 +27,7 @@ serde_json.workspace = true
 [[bench]]
 name = "stochastic_simulation"
 harness = false
+
+[badges]
+maintenance = { status = "actively-developed" }
+

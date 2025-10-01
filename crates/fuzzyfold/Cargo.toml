@@ -2,13 +2,13 @@
 name = "fuzzyfold"
 version = "0.1.1"
 description.workspace = true
+documentation.workspace = true
+keywords.workspace = true
 readme = "../../README.md"
 
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-documentation.workspace = true
-keywords.workspace = true
 categories.workspace = true
 
 autobins = false

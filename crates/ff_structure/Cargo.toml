@@ -2,13 +2,18 @@
 name = "ff_structure"
 version = "0.1.1"
 description = "fuzzyfold's secondary structure representations."
+documentation = "https://docs.rs/ff_structure"
+keywords = ["dna", "rna", "secondary-structure"]
 readme = "../../README.md"
 
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 documentation.workspace = true
-keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+
+[badges]
+maintenance = { status = "actively-developed" }
+

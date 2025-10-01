@@ -2,13 +2,14 @@
 name = "ff_energy"
 version = "0.1.1"
 description = "fuzzyfold's nearest neighbor free energy evaluations."
+documentation = "https://docs.rs/ff_energy"
+keywords = ["dna", "rna", "secondary-structure", "nearest-neighbor"]
 readme = "../../README.md"
 
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 documentation.workspace = true
-keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
