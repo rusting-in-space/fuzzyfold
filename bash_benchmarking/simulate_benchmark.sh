@@ -9,16 +9,21 @@ if [[ $# -eq 0 ]]; then
     exit 1
 fi
 
+TIME="1000000"
+
+KF="Kinfold --fpt --met --time ${TIME} --start --logML --cut 9999" 
+FF="ff-trajectory --t-end ${TIME}"
+
 # Programs to benchmark (space-separated)
-PROGRAMS=("Kinfold --fpt --met --time 10 --start" \
-          "ff-trajectory --t-end 10")
+PROGRAMS=("$KF")
 
 # Output CSV
-RESULTS="simulate_benchmark_results.csv"
+RESULTS="simulate_benchmark_results_t${TIME}.new.csv"
 echo "program,input_file,num_sequences,elapsed_seconds" > "$RESULTS"
 
 # Iterate over programs and input files
 for prog in "${PROGRAMS[@]}"; do
+    echo $prog
     prog_bin="${prog%% *}"   # take everything before first space
     if ! command -v "$prog_bin" &> /dev/null; then
         echo "⚠️ Skipping $prog_bin (not found in PATH)"
@@ -47,11 +52,10 @@ for prog in "${PROGRAMS[@]}"; do
             #echo -e $input
 
             start=$(date +%s.%N)
-            bash -c "$prog <<< \$'${input}'" >/dev/null 2>&1
+            echo -e $input | $prog >/dev/null 
             end=$(date +%s.%N)
-            runtime=$(awk -v s="$start" -v e="$end" 'BEGIN {printf "%.9f", e - s}')
 
-            #runtime=$(/usr/bin/time -f "%e" bash -c "$prog <<< \$'${input}'" 2>&1 > /dev/null)
+            runtime=$(awk -v s="$start" -v e="$end" 'BEGIN {printf "%.9f", e - s}')
             total_time=$(awk -v a="$total_time" -v b="$runtime" 'BEGIN {printf "%.6f", a + b}')
             #echo "$runtime"
         done < "$infile"

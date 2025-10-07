@@ -2,8 +2,10 @@ use std::io::Write;
 use log::info;
 use colored::*;
 use env_logger::Builder;
-use clap::{Parser, Args, ArgAction};
-use anyhow;
+use clap::Args;
+use clap::Parser;
+use clap::ArgAction;
+use anyhow::Result;
 
 use ff_energy::EnergyModel;
 use ff_structure::PairTable;
@@ -51,7 +53,7 @@ fn init_logging(verbosity: u8) {
         .init();
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     init_logging(cli.eval.verbose);
 

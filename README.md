@@ -27,12 +27,12 @@ Feel free to reach out and contribute to this project. Experience with other
 open-source code development projects would be helpful, but is not a must.
 
 Goal of the fuzzyfold workspace is to provide both production-ready code for
-scientic analysis, while also inviting code contributions from a larger
+scientific analysis, while also inviting code contributions from a larger
 community. Thus, we welcome new developers to contribute to both new and
 existing crates. However, the fuzzyfold crate itself should only re-export the
-"highest tier" production-ready code and corresponding commandline interfaces.
+'highest tier' production-ready code and corresponding command-line interfaces.
 
-For benchmarking of the stochastic simutation algorithm:
+For benchmarking of the stochastic simulation algorithm:
 
     ```cargo bench --workspace```
 

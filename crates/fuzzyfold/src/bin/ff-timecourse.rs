@@ -1,7 +1,8 @@
 use clap::Parser;
 use anyhow::Result;
 use colored::*;
-use serde_json;
+use serde_json::to_string_pretty;
+use std::fs;
 use std::sync::Arc;
 use std::path::Path;
 use std::path::PathBuf;
@@ -157,8 +158,8 @@ fn main() -> Result<()> {
 
     if let Some(path) = cli.timeline {
         let serial = master.to_serializable();
-        let json = serde_json::to_string_pretty(&serial)?;
-        std::fs::write(path, json)?;
+        let json = to_string_pretty(&serial)?;
+        fs::write(path, json)?;
     }
 
     Ok(())
