@@ -210,7 +210,7 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
     pub fn remove_loop_reaction(&mut self, i: u16) {
         let lli = self.loopstructure.loop_lookup().get(&i).unwrap();
         let rxns = self.per_loop_rxns.remove(lli).expect("Reaction must exist.");
-        if !rxns.is_empty() {
+        if rxns.is_empty() {
             debug_assert!(self.per_loop_flux.remove(lli).is_none());
             return
         }
@@ -377,4 +377,49 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    use ff_structure::PairTable;
+    use ff_energy::ViennaRNA;
+    use ff_energy::NucleotideVec;
+    use crate::Metropolis;
+
+    // --- The actual test ----------------------------------------------------
+    #[test]
+    fn test_simple_ssa_simulation() {
+        let emodel = ViennaRNA::default();
+        let rmodel = Metropolis::new(emodel.temperature(), 1.0);
+        let mut rng = StdRng::seed_from_u64(42);
+
+        let sequence = "CAAAG";
+        let structure = ".....";
+
+        let sequence = NucleotideVec::try_from(sequence).unwrap();
+        let pairings = PairTable::try_from(structure)
+            .expect("invalid structure in input");
+        let loops = LoopStructure::try_from((&sequence[..], &pairings, &emodel))
+            .expect("failed to build loop structure");
+
+        let mut simulator = LoopStructureSSA::from((loops, &rmodel));
+
+        let mut steps = 0;
+        simulator.simulate(&mut rng, 1.0, |t, tinc, flux, _ls| {
+            steps += 1;
+            println!(
+                "Step {}: t={:.4}, Δt={:.4}, flux={:.3e}",
+                steps, t, tinc, flux
+            );
+        });
+
+        assert!(steps > 0, "Simulation must perform at least one step");
+        assert!(simulator.log_flux.is_finite(), "Flux must remain finite");
+    }
+}
+
+
 
