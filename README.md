@@ -37,8 +37,9 @@ For benchmarking of the stochastic simutation algorithm:
     ```cargo bench --workspace```
 
 ### Git branches (work in progress): 
- - **master**: well-structured, well-documented, high-coverage, publication-ready code.
+ - **main**: well-structured, well-documented, high-coverage, publication-ready code.
  - **development**: well-integrated, some documentation, some coverage, experimental code.
  - **feature-_name_**: early code/crate proposals.
+
 
 

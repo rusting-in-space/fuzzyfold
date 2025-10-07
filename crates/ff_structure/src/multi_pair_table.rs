@@ -10,6 +10,10 @@ impl MultiPairTable {
     pub fn len(&self) -> usize {
         self.0.iter().map(|s| s.len()).sum()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
     
     pub fn is_well_formed(&self, _loc1: (usize, usize), _loc2: (usize, usize)) -> bool {
         todo!("not implemented");

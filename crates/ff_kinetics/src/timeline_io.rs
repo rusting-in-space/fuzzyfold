@@ -1,8 +1,8 @@
-
 use std::fs;
 use std::result;
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
+
 use crate::timeline::Timeline;
 use crate::timeline::TimelineError;
 use crate::macrostates::MacrostateRegistry;

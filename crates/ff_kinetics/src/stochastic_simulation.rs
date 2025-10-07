@@ -2,6 +2,7 @@ use std::fmt;
 use rand::Rng;
 use nohash_hasher::IntMap;
 use ff_energy::EnergyModel;
+
 use crate::LoopStructure;
 use crate::RateModel;
 
@@ -135,7 +136,7 @@ impl<'a, M: EnergyModel, K: RateModel> From<(LoopStructure<'a, M>, &'a K)>
                 logs.push(rxn.log_rate());
                 lrxns.push(rxn);
             }
-            if lrxns.len() > 0 {
+            if !lrxns.is_empty() {
                 let lflux = log_sum_exp(&logs);
                 per_loop_flux.insert(*lli, lflux);
                 loop_logs.push(lflux);
@@ -151,13 +152,13 @@ impl<'a, M: EnergyModel, K: RateModel> From<(LoopStructure<'a, M>, &'a K)>
             pair_rxns.insert(i, rxn);
         }
 
-        let pair_flux = if pair_logs.len() > 0 {
+        let pair_flux = if !pair_logs.is_empty() {
             Some(log_sum_exp(&pair_logs))
         } else {
             None
         };
 
-        let loop_flux = if loop_logs.len() > 0 {
+        let loop_flux = if !loop_logs.is_empty() {
             Some(log_sum_exp(&loop_logs))
         } else {
             None
@@ -194,8 +195,8 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
         //    self.log_flux, self.loop_flux, self.pair_flux);
         let loops: Vec<f64> = self.per_loop_flux.values().cloned().collect();
         let pairs: Vec<f64> = self.pair_rxns.values().map(|rxn| rxn.log_rate()).collect();
-        self.loop_flux = if loops.len() > 0 { Some(log_sum_exp(&loops)) } else { None };
-        self.pair_flux = if pairs.len() > 0 { Some(log_sum_exp(&pairs)) } else { None };
+        self.loop_flux = if !loops.is_empty() { Some(log_sum_exp(&loops)) } else { None };
+        self.pair_flux = if !pairs.is_empty() { Some(log_sum_exp(&pairs)) } else { None };
         self.log_flux = match (self.pair_flux, self.loop_flux) {
             (Some(pf), None) => pf,
             (None, Some(lf)) => lf,
@@ -208,14 +209,14 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
    
     pub fn remove_loop_reaction(&mut self, i: u16) {
         let lli = self.loopstructure.loop_lookup().get(&i).unwrap();
-        let rxns = self.per_loop_rxns.remove(&lli).expect("Reaction must exist.");
-        if rxns.len() == 0 {
-            debug_assert!(self.per_loop_flux.remove(&lli).is_none());
+        let rxns = self.per_loop_rxns.remove(lli).expect("Reaction must exist.");
+        if !rxns.is_empty() {
+            debug_assert!(self.per_loop_flux.remove(lli).is_none());
             return
         }
-        let lflux = self.per_loop_flux.remove(&lli)
+        let lflux = self.per_loop_flux.remove(lli)
             .expect("The lflux to be removed.");
-        if self.per_loop_flux.len() > 0 {
+        if !self.per_loop_flux.is_empty() {
             self.loop_flux = Some(log_sub(self.loop_flux.unwrap(), lflux).expect("lf, now that one should be fine."));
             self.log_flux = log_sub(self.log_flux, lflux).expect("tf, now that one should be fine.");
         } else {
@@ -228,7 +229,7 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
         let old_rxn = self.pair_rxns.remove(&i).expect("The reaction to be removed.");
         let lrate = old_rxn.log_rate();
 
-        if self.pair_rxns.len() > 0 {
+        if !self.pair_rxns.is_empty() {
             self.pair_flux = Some(log_sub(self.pair_flux.unwrap(), lrate).expect("pf, now that one should be fine."));
             self.log_flux = log_sub(self.log_flux, lrate).expect("tf, now that one should be fine.");
         } else {
@@ -251,7 +252,7 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
             logs.push(rxn.log_rate());
             lrxns.push(rxn);
         }
-        if lrxns.len() > 0 {
+        if !lrxns.is_empty() {
             let lflux = log_sum_exp(&logs);
             self.per_loop_flux.insert(lli, lflux);
             if self.loop_flux.is_some() {
@@ -269,7 +270,7 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
             // then it is an update, otherwise insert!
             if let Some(old) = self.pair_rxns.remove(&i) {
                 let lrate = old.log_rate();
-                if self.pair_rxns.len() > 0 {
+                if !self.pair_rxns.is_empty() {
                     self.pair_flux = Some(log_sub(self.pair_flux.unwrap(), lrate).expect("upf, now that one should be fine."));
                     self.log_flux = log_sub(self.log_flux, lrate).expect("utf, now that one should be fine.");
                 } else {
@@ -279,7 +280,7 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
             } 
             let rxn = Reaction::new_del(self.ratemodel, i, j, delta);
             let lrate = rxn.log_rate();
-            if self.pair_rxns.len() > 0 {
+            if !self.pair_rxns.is_empty() {
                 self.pair_flux = Some(log_add(self.pair_flux.unwrap(), lrate));
             } else {
                 self.pair_flux = Some(lrate);

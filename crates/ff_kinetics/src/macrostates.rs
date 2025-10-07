@@ -1,6 +1,7 @@
 use std::fs::File;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::path::PathBuf;
-use std::io::{BufRead, BufReader};
 use ahash::AHashMap;
 
 use ff_structure::DotBracketVec;
@@ -23,7 +24,7 @@ impl Macrostate {
     pub fn name(&self) -> &str {
         match self {
             Macrostate::Explicit(registry) => {
-                &registry.name()
+                registry.name()
             }
             Macrostate::Constraint(_) => {
                 todo!("");
@@ -48,9 +49,8 @@ pub struct MacrostateRegistry {
     macrostates: Vec<Macrostate>,
 }
 
-impl MacrostateRegistry {
-    // -> change to default??
-    pub fn new() -> Self {
+impl Default for MacrostateRegistry {
+    fn default() -> Self {
         let unassigned = Macrostate::Explicit(StructureRegistry {
             name: "Unassigned".to_string(),
             pool: Vec::new(),
@@ -62,13 +62,15 @@ impl MacrostateRegistry {
             macrostates: vec![unassigned],
         }
     }
+}
 
+impl MacrostateRegistry {
     pub fn from_files<M: EnergyModel>(
         files: &[PathBuf],
         sequence: &NucleotideVec,
         model: Option<&M>,
     ) -> Self {
-        let mut registry = MacrostateRegistry::new(); // default.
+        let mut registry = MacrostateRegistry::default(); 
 
         for file in files {
             let fh = File::open(file)
@@ -93,7 +95,7 @@ impl MacrostateRegistry {
                 .expect("Macrostate file is missing a sequence line")
                 .expect("Failed to read sequence line");
 
-            let file_seq = NucleotideVec::from_lossy(&seq_line.trim());
+            let file_seq = NucleotideVec::from_lossy(seq_line.trim());
             assert_eq!(
                 file_seq, *sequence,
                 "Sequence in macrostate file {:?} does not match provided input sequence",
@@ -183,6 +185,10 @@ impl MacrostateRegistry {
         self.macrostates.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.macrostates.is_empty()
+    }
+
     /// Iterate over all macrostates
     pub fn iter(&self) -> impl Iterator<Item = (usize, &Macrostate)> {
         self.macrostates.iter().enumerate()
@@ -226,7 +232,6 @@ impl StructureRegistry {
         self.energy = Some(-rt * q_sum.ln());
     }
 
-
     /// Return the name of this registry (macrostate label)
     pub fn name(&self) -> &str {
         &self.name
@@ -245,6 +250,10 @@ impl StructureRegistry {
     /// Return the number of unique structures in this registry.
     pub fn len(&self) -> usize {
         self.pool.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pool.is_empty()
     }
 
     /// Return an iterator over all stored structures.

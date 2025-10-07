@@ -5,7 +5,6 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::Path;
-use ff_structure::PairTable;
 
 use crate::parameters::TURNER_2004;
 use crate::NearestNeighborLoop;
@@ -31,12 +30,14 @@ pub struct ViennaRNA {
     energy_tables: EnergyTables,
 }
 
-impl ViennaRNA {
-
-    pub fn default() -> Self {
+impl Default for ViennaRNA {
+    fn default() -> Self {
         ViennaRNA::from_parameter_str(TURNER_2004)
             .expect("Built-in Turner 2004 parameter file must be valid")
     }
+}
+
+impl ViennaRNA {
 
     pub fn from_parameter_file<P: AsRef<Path>>(path: P) -> Result<Self, ParamError> {
         let file = File::open(path)?;
@@ -302,40 +303,6 @@ impl ViennaRNA {
         en
     }
 
-    /// A potential helper function to evaluate the energy of a base-pair move.
-    fn _energy_of_pair(&self, 
-        sequence: &[Base], 
-        structure: &PairTable, 
-        i: usize,
-        j: usize
-    ) -> i32 {
-        let inner = structure.loop_enclosed_by(Some((i, j)));
-        let epair = structure.get_enclosing_pair(i, j);
-
-        if let (Some(pi), Some(pj)) = (structure[i], structure[j]) {
-            assert!(j == pi && i == pj);
-            let outer = structure.loop_enclosed_by(epair);
-            let mut pt = structure.clone();
-            pt[i] = None;
-            pt[j] = None;
-            let combo = pt.loop_enclosed_by(epair);
-
-            let en_paired = self.energy_of_loop(sequence, &inner) + self.energy_of_loop(sequence, &outer);
-            let en_absent = self.energy_of_loop(sequence, &combo);
-            return en_absent - en_paired
-        } else {
-            assert!(structure[i] == structure[j]);
-            let combo = structure.loop_enclosed_by(epair);
-            let mut pt = structure.clone();
-            pt[i] = Some(j);
-            pt[j] = Some(i);
-            let outer = pt.loop_enclosed_by(epair);
-            let en_paired = self.energy_of_loop(sequence, &inner) + self.energy_of_loop(sequence, &outer);
-            let en_absent = self.energy_of_loop(sequence, &combo);
-            return en_paired - en_absent 
-        }
-    }
-
 }
 
 impl EnergyModel for ViennaRNA {
@@ -404,6 +371,7 @@ impl EnergyModel for ViennaRNA {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ff_structure::PairTable;
     use crate::NucleotideVec;
 
     #[test]

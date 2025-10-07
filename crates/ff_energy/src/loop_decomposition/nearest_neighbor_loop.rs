@@ -136,7 +136,7 @@ impl NearestNeighborLoop {
     fn unpaired_ranges(&self, len: usize) -> Vec<Range<usize>> {
         match self {
             Self::Hairpin { closing: (i, j) } => { 
-                vec![(*i + 1..*j)]
+                vec![*i + 1..*j]
             },
             Self::Interior { closing: (i, j),  inner: (p, q) } => { 
                 vec![(*i + 1)..(*p), (*q + 1)..(*j)]

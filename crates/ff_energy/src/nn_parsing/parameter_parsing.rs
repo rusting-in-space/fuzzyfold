@@ -1,12 +1,12 @@
-/// A parser for the parameter file format shipped with ViennaRNA.
-///
-/// IMPORTANT: This module provides the hardcoded indices of parameter entries
-/// as specified in the parsed file! Verify that orders are correct, before
-/// using this parser!!
-///
-/// No error handling implemented. If you got a malformed parameter file, 
-/// it's going to panic through .expect()
-///
+//! A parser for the parameter file format shipped with ViennaRNA.
+//!
+//! IMPORTANT: This module provides the hardcoded indices of parameter entries
+//! as specified in the parsed file! Verify that orders are correct, before
+//! using this parser!!
+//!
+//! No error handling implemented. If you got a malformed parameter file, 
+//! it's going to panic through .expect()
+//!
 
 /// Importing only EnergyTables and it's indices.
 use crate::{Base, NucleotideVec};

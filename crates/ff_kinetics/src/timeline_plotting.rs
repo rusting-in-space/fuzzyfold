@@ -46,7 +46,7 @@ pub fn plot_occupancy_over_time(
             if (*x - t_lin).abs() < 1e-9 { "".to_string() } else { format!("{}", x) }
         })
     .y_labels(10)
-        .light_line_style(&RGBColor(220, 220, 220))
+        .light_line_style(RGBColor(220, 220, 220))
         .axis_desc_style(("sans-serif", 18))
         .label_style(("sans-serif", 18))
         .draw()
@@ -55,7 +55,7 @@ pub fn plot_occupancy_over_time(
     // draw separator at x = t_lin (right edge of this panel)
     chart_left.draw_series(std::iter::once(PathElement::new(
         vec![(t_lin, 0.0), (t_lin, 1.0)],
-        &BLACK.mix(0.7),
+        BLACK.mix(0.7),
     ))).unwrap();
 
     // ---- Right: log panel ----
@@ -75,14 +75,14 @@ pub fn plot_occupancy_over_time(
         //.x_labels(7)
         .x_label_formatter(&|x| if *x < 0.01 {format!("{:.1e}", x)} else {format!("{}", x)})  // scientific notation
         .y_labels(10) // hide y ticks on right
-        .light_line_style(&RGBColor(220, 220, 220))
+        .light_line_style(RGBColor(220, 220, 220))
         .label_style(("sans-serif", 18))
         .draw().unwrap();
 
     // repeat separator at x = t_lin (left edge of this panel)
     chart_right.draw_series(std::iter::once(PathElement::new(
         vec![(t_lin, 0.0), (t_lin, 1.0)],
-        &BLACK.mix(0.7),
+        BLACK.mix(0.7),
     ))).unwrap();
 
 
@@ -133,8 +133,8 @@ pub fn plot_occupancy_over_time(
     // after loop:
     chart_right
         .configure_series_labels()
-        .border_style(&BLACK)
-        .background_style(&WHITE.mix(0.8))
+        .border_style(BLACK)
+        .background_style(WHITE.mix(0.8))
         .position(SeriesLabelPosition::UpperRight)
             .label_font(("sans-serif", 16).into_font())   // <-- legend font size
         .draw().unwrap();

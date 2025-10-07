@@ -35,22 +35,21 @@ impl<'a, M: EnergyModel> LoopCache<'a, M> {
     }
 
     pub fn get_loop_by_index(&self, index: &usize) -> &(NearestNeighborLoop, i32) {
-        self.loop_list.get(&index).expect("Incorrect index")
+        self.loop_list.get(index).expect("Incorrect index")
     }
 
     pub fn calc_pair_energy(&mut self, outer_index: usize, inner_index: usize) -> i32 {
         let (outer, o_en) = self.loop_list.get(&outer_index).expect("Missing outer loop_list entry.");
         let (inner, i_en) = self.loop_list.get(&inner_index).expect("Missing inner loop_list entry.");
-        let combo = &outer.join_loop(&inner);
-        let combo_energy = self.model.energy_of_loop(self.sequence, &combo);
-        let delta = combo_energy - (o_en + i_en);
-        delta
+        let combo = &outer.join_loop(inner);
+        let combo_energy = self.model.energy_of_loop(self.sequence, combo);
+        combo_energy - (o_en + i_en)
     }
 
     pub fn apply_delete_move(&mut self, outer_index: usize, inner_index: usize, delta: i32) -> usize {
         let (outer, o_en) = self.loop_list.get(&outer_index).expect("Missing outer loop_list entry.");
         let (inner, i_en) = self.loop_list.get(&inner_index).expect("Missing inner loop_list entry.");
-        let combo = outer.join_loop(&inner);
+        let combo = outer.join_loop(inner);
         let combo_energy = (o_en + i_en) - delta;
 
         // re-use outer_index for the new loop.
@@ -110,12 +109,15 @@ impl<'a, M: EnergyModel> LoopCache<'a, M> {
     }
 }
 
+type MoveEnergies = Vec<(u16, u16, i32)>;
+type IndexedLoopNeighbors = (usize, MoveEnergies);
+
 pub struct LoopStructure<'a, M: EnergyModel> {
     registry: LoopCache<'a, M>,
     /// From sequence index to registry index.
     loop_lookup: IntMap<u16, usize>, 
     /// registry index to list of (i, j, deltaE)
-    loop_neighbors: IntMap<usize, Vec<(u16, u16, i32)>>,
+    loop_neighbors: IntMap<usize, MoveEnergies>,
     /// Current pairs, i<j where i is the id.
     pair_list: IntMap<u16, u16>,
     /// pair id to deltaE
@@ -192,8 +194,7 @@ impl<'a, M: EnergyModel> LoopStructure<'a, M> {
     }
   
     pub fn apply_del_move(&mut self, i: u16, j: u16) -> 
-        ((usize, Vec<(u16, u16, i32)>), Vec<(u16, u16, i32)>
-    ) {
+        (IndexedLoopNeighbors, MoveEnergies) {
         debug_assert_eq!(&j,
             self.pair_list.get(&i).expect("Missing pair_list entry."));
         let &delta = self.pair_neighbors.get(&i).expect("Missing pair_neighbors entry.");
@@ -221,9 +222,9 @@ impl<'a, M: EnergyModel> LoopStructure<'a, M> {
 
     pub fn apply_add_move(&mut self, i: u16, j: u16
     ) -> (
-        (usize, Vec<(u16, u16, i32)>), 
-        (usize, Vec<(u16, u16, i32)>),
-        Vec<(u16, u16, i32)>,
+        IndexedLoopNeighbors,
+        IndexedLoopNeighbors,
+        MoveEnergies,
     ) {
         let &c_index = self.loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
         debug_assert_eq!(&c_index, 
@@ -275,7 +276,7 @@ impl<'a, T: LoopDecomposition, M: EnergyModel> TryFrom<(&'a [Base], &T, &'a M)> 
         // Decomposing the structure into loops and initializing
         // loop_list, pair_list, and loop_lookup. 
         pairings.for_each_loop(|l| {
-            let lli = registry.insert_loop(&l);
+            let lli = registry.insert_loop(l);
             if let Some((i, j)) = l.closing() {
                 pair_list.insert(i as u16, j as u16); 
             }
@@ -293,8 +294,8 @@ impl<'a, T: LoopDecomposition, M: EnergyModel> TryFrom<(&'a [Base], &T, &'a M)> 
 
         let mut pair_neighbors = IntMap::default();
         for (i, j) in pair_list.iter() {
-            let &o_index = loop_lookup.get(&i).expect("Missing loop_lookup entry for i.");
-            let &i_index = loop_lookup.get(&j).expect("Missing loop_lookup entry for j.");
+            let &o_index = loop_lookup.get(i).expect("Missing loop_lookup entry for i.");
+            let &i_index = loop_lookup.get(j).expect("Missing loop_lookup entry for j.");
             // How does the free energy change if the move is applied.
             let delta = registry.calc_pair_energy(o_index, i_index);
             pair_neighbors.insert(*i, delta);
@@ -342,8 +343,8 @@ mod tests {
         // Clone neighbor list so we don’t mutate while iterating
         let neighbors: Vec<(u16, u16, i32)> = ls
             .get_add_neighbors_per_loop()
-            .into_iter()
-            .flat_map(|(_, nbrs)| nbrs.into_iter().copied())
+            .iter()
+            .flat_map(|(_, nbrs)| nbrs.iter().copied())
             .collect();
 
         for (i, j, de) in neighbors {

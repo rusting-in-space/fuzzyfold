@@ -195,20 +195,9 @@ pub struct EnergyTables {
     pub hairpin_sequences: AHashMap<NucleotideVec, (i32, i32)>,
 }
 
-macro_rules! section_match {
-    ($enum:expr, $line:expr, $tables:expr, $($struct:ident),+ $(,)?) => {
-        match $enum {
-            $(
-                ParamFileSection::$struct(ref mut s) => s.parse_line($line, &mut $tables),
-            )+
-                _ => { panic!("Couldn't match line \"{}\"", $line) },
-        }
-    };
-}
-
-impl EnergyTables {
-    pub fn default() -> Self {
-        EnergyTables {
+impl Default for EnergyTables {
+    fn default() -> Self {
+        Self {
             stack:            [[None; P]; P],
             stack_enthalpies: [[None; P]; P],
 
@@ -249,7 +238,20 @@ impl EnergyTables {
             hairpin_sequences: AHashMap::new(),
         }
     }
+}
 
+macro_rules! section_match {
+    ($enum:expr, $line:expr, $tables:expr, $($struct:ident),+ $(,)?) => {
+        match $enum {
+            $(
+                ParamFileSection::$struct(ref mut s) => s.parse_line($line, &mut $tables),
+            )+
+                _ => { panic!("Couldn't match line \"{}\"", $line) },
+        }
+    };
+}
+
+impl EnergyTables {
     pub fn from_reader<R: BufRead>(reader: R) -> Result<Self, ParamError> {
         let mut tables = EnergyTables::default();
         let mut section = ParamFileSection::None;

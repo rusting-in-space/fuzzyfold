@@ -95,7 +95,7 @@ mod tests {
         // positions: 0 1 2 3 4 5
         // dotbrack:  ( ( . . ) )
         // loops:    0 1 2   2 1 0
-        let expected = vec![
+        let expected = [
             LoopInfo::Paired { o: 0, i: 1 },
             LoopInfo::Paired { o: 1, i: 2 },
             LoopInfo::Unpaired { l: 2 },

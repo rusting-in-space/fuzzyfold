@@ -44,7 +44,7 @@ impl LoopDecomposition for PairTable {
             }
             f(&NearestNeighborLoop::classify(closing, branches));
         }
-        recurse(&self, None, &mut f);
+        recurse(self, None, &mut f);
     }
 
     fn loop_enclosed_by(&self, closing: Option<(usize, usize)>) -> NearestNeighborLoop {
@@ -76,7 +76,7 @@ impl LoopDecomposition for PairTable {
                 }
             }
         }
-        return None
+        None
     }
 }
 
