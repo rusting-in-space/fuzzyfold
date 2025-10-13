@@ -2,39 +2,40 @@ use std::fmt;
 use std::ops::Range;
 use colored::*;
 
+use ff_structure::NAIDX;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NearestNeighborLoop {
     Hairpin {
-        closing: (usize, usize), // (i, j)
+        closing: (NAIDX, NAIDX), // (i, j)
     },
     Interior {
-        closing: (usize, usize),
-        inner: (usize, usize),
+        closing: (NAIDX, NAIDX),
+        inner: (NAIDX, NAIDX),
     },
     Multibranch {
-        closing: (usize, usize),
+        closing: (NAIDX, NAIDX),
         //NOTE: this list must ALWAYS be in 5'->3' order.
-        branches: Vec<(usize, usize)>,
+        branches: Vec<(NAIDX, NAIDX)>,
     },
     Exterior {
         //NOTE: this list must ALWAYS be in 5'->3' order.
-        branches: Vec<(usize, usize)>,
+        branches: Vec<(NAIDX, NAIDX)>,
     },
 }
 
 impl fmt::Display for NearestNeighborLoop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NearestNeighborLoop::Hairpin { closing: (i, j) } => {
+            Self::Hairpin { closing: (i, j) } => {
                 write!(f, "{:<8} ({:>3}, {:>3})", 
                     "Hairpin".cyan(), i, j)
             }
-            NearestNeighborLoop::Interior { closing: (i, j), inner: (p, q) } => {
+            Self::Interior { closing: (i, j), inner: (p, q) } => {
                 write!(f, "{:<8} ({:>3}, {:>3}), ({:>3}, {:>3})", 
                     "Interior".cyan(), i, j, p, q)
             }
-            NearestNeighborLoop::Multibranch { closing: (i, j), branches } => {
-                //write!(f, "{:<15} ({:>3}, {:>3}), ({:>2} branches)", "Multibranch".cyan(), i, j, branches.len())
+            Self::Multibranch { closing: (i, j), branches } => {
                 write!(f, "{:<8} ({:>3}, {:>3}), {}", 
                     "Multibr.".cyan().bold(), i, j, 
                     branches.iter()
@@ -42,7 +43,7 @@ impl fmt::Display for NearestNeighborLoop {
                     .collect::<Vec<_>>()
                     .join(", "))
             }
-            NearestNeighborLoop::Exterior { branches } => {
+            Self::Exterior { branches } => {
                 write!(f, "{:<8}             {}", 
                     "Exterior".cyan().bold(), 
                     branches.iter()
@@ -57,32 +58,24 @@ impl fmt::Display for NearestNeighborLoop {
 impl NearestNeighborLoop {
 
     /// Return all base pairs (closing, inner, and/or branches) contained in this loop.
-    pub fn pairs(&self) -> Vec<(usize, usize)> {
+    pub fn pairs(&self) -> Vec<(NAIDX, NAIDX)> {
         match self {
-            NearestNeighborLoop::Hairpin { closing } => {
-                vec![*closing]
-            }
-            NearestNeighborLoop::Interior { closing, inner } => {
-                vec![*closing, *inner]
-            }
+            NearestNeighborLoop::Hairpin { closing } => vec![*closing],
+            NearestNeighborLoop::Interior { closing, inner } => vec![*closing, *inner],
             NearestNeighborLoop::Multibranch { closing, branches } => {
                 let mut pairs = Vec::with_capacity(1 + branches.len());
                 pairs.push(*closing);
                 pairs.extend(branches.iter().cloned());
                 pairs
             }
-            NearestNeighborLoop::Exterior { branches } => {
-                branches.clone()
-            }
+            NearestNeighborLoop::Exterior { branches } => branches.clone(),
         }
     }
 
     /// Return all base pairs (closing, inner, and/or branches) as packed u32 keys.
     /// Exterior loops use 0 as a sentinel closing key.
     pub fn loop_key(&self) -> Vec<u32> {
-        fn pack(i: usize, j: usize) -> u32 {
-            debug_assert!(i <= u16::MAX as usize, "i={} too large for u16", i);
-            debug_assert!(j <= u16::MAX as usize, "j={} too large for u16", j);
+        fn pack(i: NAIDX, j: NAIDX) -> u32 {
             ((i as u32) << 16) | (j as u32)
         }
 
@@ -112,8 +105,8 @@ impl NearestNeighborLoop {
     }
 
     pub fn classify(
-        closing: Option<(usize, usize)>, 
-        branches: Vec<(usize, usize)>, 
+        closing: Option<(NAIDX, NAIDX)>, 
+        branches: Vec<(NAIDX, NAIDX)>, 
     ) -> Self {
         match closing {
             None => Self::Exterior { branches },
@@ -125,7 +118,7 @@ impl NearestNeighborLoop {
         }
     }
 
-    pub fn closing(&self) -> Option<(usize, usize)> {
+    pub fn closing(&self) -> Option<(NAIDX, NAIDX)> {
         match self { Self::Hairpin { closing }
             | Self::Interior { closing, .. }
             | Self::Multibranch { closing, .. } => Some(*closing),
@@ -135,28 +128,28 @@ impl NearestNeighborLoop {
 
     fn unpaired_ranges(&self, len: usize) -> Vec<Range<usize>> {
         match self {
-            Self::Hairpin { closing: (i, j) } => { 
-                vec![*i + 1..*j]
-            },
-            Self::Interior { closing: (i, j),  inner: (p, q) } => { 
-                vec![(*i + 1)..(*p), (*q + 1)..(*j)]
-            },
+            Self::Hairpin { closing: (i, j) } => vec![
+                (*i as usize + 1)..(*j as usize)],
+            Self::Interior { closing: (i, j),  inner: (p, q) } => vec![
+                (*i as usize + 1)..(*p as usize), 
+                (*q as usize + 1)..(*j as usize)
+            ],
             Self::Multibranch { closing: (i, j), branches } => {
                 let mut result = vec![];
-                let mut start = *i;
+                let mut start = *i as usize;
                 for &(p, q) in branches {
-                    result.push((start+1)..p);
-                    start = q;
+                    result.push((start + 1)..(p as usize));
+                    start = q as usize;
                 }
-                result.push((start+1)..(*j));
+                result.push((start+1)..(*j as usize));
                 result
             }
             Self::Exterior { branches } => {
                 let mut result = Vec::new();
-                let mut start = 0;
+                let mut start = 0usize;
                 for &(p, q) in branches {
-                    result.push(start..p);
-                    start = q+1;
+                    result.push(start..(p as usize));
+                    start = q as usize + 1;
                 }
                 result.push(start..len);
                 result
@@ -182,7 +175,7 @@ impl NearestNeighborLoop {
    
     /// Split the given loop into two new loops at the indices i,j
     /// NOTE: Returns (outer, inner)
-    pub fn split_loop(&self, i: usize, j: usize) -> (Self, Self) {
+    pub fn split_loop(&self, i: NAIDX, j: NAIDX) -> (Self, Self) {
         assert!(i < j, "Split pair (i,j) must satisfy i < j");
         match self {
             Self::Hairpin { closing: (a, b) } => {

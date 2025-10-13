@@ -1,47 +1,94 @@
+use core::f64;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
 use ahash::AHashMap;
 
+use ahash::AHashSet;
 use ff_structure::DotBracketVec;
 use ff_structure::PairTable;
 use ff_energy::NucleotideVec;
 use ff_energy::EnergyModel;
 
+use crate::RateModel;
 use crate::{K0, KB};
 
+// A trait macrostate would not be able to store information.
+// It makes more sense to support different from traits.
 #[derive(Debug)]
-pub enum Macrostate {
-    /// Explicit registry of structures in the macrostate.
-    Explicit(StructureRegistry),
-
-    /// Placeholder for constraint-based macrostates (not yet implemented).
-    Constraint(DotBracketVec),
+pub struct Macrostate {
+    name: String,
+    ensemble: AHashMap<DotBracketVec, (i32, f64)>,
+    ensemble_energy: f64,
+    //NOTE: potentially using Once_cell for lazy initialization?
+    neighbors: Option<AHashMap<DotBracketVec, (i32, f64)>>,
 }
 
 impl Macrostate {
-    pub fn name(&self) -> &str {
-        match self {
-            Macrostate::Explicit(registry) => {
-                registry.name()
-            }
-            Macrostate::Constraint(_) => {
-                todo!("");
-            }
+
+    pub fn from_list<M: EnergyModel>(
+        name: &str, 
+        structures: &[DotBracketVec], 
+        sequence: &NucleotideVec, 
+        energy_model: &M, 
+    ) -> Self {
+        let mut ensemble = AHashMap::with_capacity(structures.len());
+        let rt = KB * (K0 + energy_model.temperature());
+
+        let mut q_sum = 0.0;
+        for dbv in structures {
+            let pt = PairTable::try_from(dbv)
+                .expect("Invalid dot-bracket for energy evaluation");
+            let en = energy_model.energy_of_structure(sequence, &pt);
+            let q = (-en as f64 / 100.0 / rt).exp();
+            ensemble.insert(dbv.clone(), (en, q));
+            q_sum += q;
+        }
+        // Normalize probabilities
+        for (_dbv, (_en, prob)) in ensemble.iter_mut() {
+            *prob /= q_sum;
+        }
+
+        Self {
+            name: name.to_owned(),
+            ensemble,
+            ensemble_energy: -rt * q_sum.ln(),
+            neighbors: None,
         }
     }
 
-    pub fn energy(&self) -> Option<f64> {
-        match self {
-            Macrostate::Explicit(registry) => {
-                registry.energy()
-            }
-            Macrostate::Constraint(_) => {
-                todo!("");
-            }
-        }
+    pub fn name(&self) -> &str {
+        &self.name
     }
+
+    /// Returns all secondary structures, their corresponding energy and probablility
+    pub fn ensemble(&self) -> &AHashMap<DotBracketVec, (i32, f64)> {
+        &self.ensemble
+    }
+
+    pub fn ensemble_energy(&self) -> f64 {
+        self.ensemble_energy
+    }
+    
+    pub fn contains(&self, structure: &DotBracketVec) -> bool {
+        self.ensemble.contains_key(structure)
+    }
+
+    // /// Returns all first steps out of the macrostate, 
+    // /// their corresponding energy and k_{ms,j}
+    // pub fn get_neighbors<R: RateModel>(&self, rate_model: &R
+    // ) -> &AHashMap<DotBracketVec, (i32, f64)> {
+    //     //TODO for each structure enum neighbors,
+    //     // if neighbor not in macrostate, add it to results,
+    //     // if it does not exist, then update the energy and
+    //     // assign rate, otherwise debug_assert energy and 
+    //     // add the rate to the flux k_{ms, j}
+    //     self.neighbors.unwrap()
+    // }
+
+    //fn get_random_structure(&self) -> DotBracketVec;
+    //fn get_probability(&self, structure: &DotBracketVec) -> f64;
 }
 
 #[derive(Debug)]
@@ -51,12 +98,12 @@ pub struct MacrostateRegistry {
 
 impl Default for MacrostateRegistry {
     fn default() -> Self {
-        let unassigned = Macrostate::Explicit(StructureRegistry {
+        let unassigned = Macrostate {
             name: "Unassigned".to_string(),
-            pool: Vec::new(),
-            lookup: AHashMap::new(),
-            energy: None,
-        });
+            ensemble: AHashMap::default(),
+            ensemble_energy: 0.0,
+            neighbors: None,
+        };
 
         Self {
             macrostates: vec![unassigned],
@@ -68,7 +115,7 @@ impl MacrostateRegistry {
     pub fn from_files<M: EnergyModel>(
         files: &[PathBuf],
         sequence: &NucleotideVec,
-        model: Option<&M>,
+        model: &M,
     ) -> Self {
         let mut registry = MacrostateRegistry::default(); 
 
@@ -127,15 +174,7 @@ impl MacrostateRegistry {
                 file
             );
 
-            // Precompute RT once if we have a model
-            let mut reg = StructureRegistry::from_list(&name, &structures);
-
-            if let Some(model) = model {
-                let rt = KB * (K0 + model.temperature());
-                reg.assign_energy(sequence, model, rt)
-            }
-
-            registry.insert(Macrostate::Explicit(reg));
+            registry.insert(Macrostate::from_list(&name, &structures, sequence, model));
         }
 
         registry
@@ -153,15 +192,8 @@ impl MacrostateRegistry {
         let mut matches = Vec::new();
 
         for (i, ms) in self.macrostates.iter().enumerate() {
-            match ms {
-                Macrostate::Explicit(reg) => {
-                    if reg.contains(structure) {
-                        matches.push(i);
-                    }
-                }
-                Macrostate::Constraint(_pattern) => {
-                    // Not implemented yet
-                }
+            if ms.contains(structure) {
+                matches.push(i);
             }
         }
 
@@ -198,53 +230,26 @@ impl MacrostateRegistry {
 #[derive(Debug, Default)]
 pub struct StructureRegistry {
     name: String,
-    pool: Vec<DotBracketVec>,
-    lookup: AHashMap<DotBracketVec, usize>,
-    energy: Option<f64>,
+    pool: AHashSet<DotBracketVec>,
 }
 
 impl StructureRegistry {
     pub fn from_list(name: &str, structures: &[DotBracketVec]) -> Self {
-        let mut pool = Vec::with_capacity(structures.len());
-        let mut lookup = AHashMap::with_capacity(structures.len());
+        let mut pool = AHashSet::with_capacity(structures.len());
 
         for (i, dbv) in structures.iter().enumerate() {
-            pool.push(dbv.clone());
-            lookup.insert(dbv.clone(), i);
+            pool.insert(dbv.clone());
         }
 
         Self {
             name: name.to_owned(),
             pool,
-            lookup,
-            energy: None,
         }
-    }
-
-    pub fn assign_energy<M: EnergyModel>(&mut self, sequence: &NucleotideVec, model: &M, rt: f64,) {
-        let mut q_sum = 0.0;
-        for dbv in self.pool.iter() {
-            let pt = PairTable::try_from(dbv)
-                .expect("Invalid dot-bracket for energy evaluation");
-            let en = model.energy_of_structure(sequence, &pt) as f64 / 100.0;
-            q_sum += (-en / rt).exp();
-        }
-        self.energy = Some(-rt * q_sum.ln());
     }
 
     /// Return the name of this registry (macrostate label)
     pub fn name(&self) -> &str {
         &self.name
-    }
-
-    /// Return the name of this registry (macrostate label)
-    pub fn energy(&self) -> Option<f64> {
-        self.energy
-    }
-
-    /// Check whether a structure is contained in this registry.
-    pub fn contains(&self, structure: &DotBracketVec) -> bool {
-        self.lookup.contains_key(structure)
     }
 
     /// Return the number of unique structures in this registry.

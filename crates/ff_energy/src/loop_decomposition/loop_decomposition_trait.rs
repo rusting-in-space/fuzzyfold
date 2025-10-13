@@ -1,4 +1,5 @@
 
+use ff_structure::NAIDX;
 use ff_structure::PairTable;
 use crate::NearestNeighborLoop;
 
@@ -11,33 +12,32 @@ pub trait LoopDecomposition {
         out
     }
 
-    fn loop_enclosed_by(&self, closing: Option<(usize, usize)>) -> NearestNeighborLoop;
+    fn loop_enclosed_by(&self, closing: Option<(NAIDX, NAIDX)>) -> NearestNeighborLoop;
 
-    fn get_enclosing_pair(&self, i: usize, j: usize) -> Option<(usize, usize)>;
+    fn get_enclosing_pair(&self, i: NAIDX, j: NAIDX) -> Option<(NAIDX, NAIDX)>;
 }
 
 impl LoopDecomposition for PairTable {
     fn for_each_loop<F: FnMut(&NearestNeighborLoop)>(&self, mut f: F) {
         fn recurse<F: FnMut(&NearestNeighborLoop)>(
             pt: &PairTable,
-            closing: Option<(usize, usize)>,
+            closing: Option<(NAIDX, NAIDX)>,
             f: &mut F,
         ) {
             let mut branches = Vec::new();
 
             let (mut p, j) = if let Some((i, j)) = closing {
-                (i + 1, j) 
+                (i as usize + 1, j as usize) 
             } else { 
                 (0, pt.len())
             };
 
             while p < j {
                 if let Some(q) = pt[p] {
-                    assert!(q > p);
-                    branches.push((p, q));
-                    // Recurse into child loop
-                    recurse(pt, Some((p, q)), f);
-                    p = q + 1;
+                    debug_assert!(q > p as NAIDX);
+                    branches.push((p as NAIDX, q));
+                    recurse(pt, Some((p as NAIDX, q)), f);
+                    p = q as usize + 1;
                 } else {
                     p += 1;
                 }
@@ -47,20 +47,21 @@ impl LoopDecomposition for PairTable {
         recurse(self, None, &mut f);
     }
 
-    fn loop_enclosed_by(&self, closing: Option<(usize, usize)>) -> NearestNeighborLoop {
+    fn loop_enclosed_by(&self, closing: Option<(NAIDX, NAIDX)>
+    ) -> NearestNeighborLoop {
         let mut branches = Vec::new();
 
         let (mut p, j) = if let Some((i, j)) = closing {
-            (i + 1, j) 
+            (i as usize + 1, j as usize) 
         } else { 
             (0, self.len())
         };
 
         while p < j {
             if let Some(q) = self[p] {
-                assert!(q > p);
-                branches.push((p, q));
-                p = q + 1;
+                debug_assert!(q > p as NAIDX);
+                branches.push((p as NAIDX, q));
+                p = q as usize + 1;
             } else {
                 p += 1;
             }
@@ -68,11 +69,12 @@ impl LoopDecomposition for PairTable {
         NearestNeighborLoop::classify(closing, branches)
     }
 
-    fn get_enclosing_pair(&self, i: usize, j: usize) -> Option<(usize, usize)> { 
-        for q in j..self.len() {
+    fn get_enclosing_pair(&self, i: NAIDX, j: NAIDX) -> Option<(NAIDX, NAIDX)> { 
+        let uj = j as usize;
+        for q in uj..self.len() {
             if let Some(p) = self[q] {
                 if p < i {
-                    return Some((p, q));
+                    return Some((p, q as NAIDX));
                 }
             }
         }

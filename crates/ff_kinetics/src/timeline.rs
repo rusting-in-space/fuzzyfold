@@ -161,14 +161,9 @@ impl fmt::Display for Timeline {
 
             // Sort by energy, None last
             entries.sort_by(|(a_idx, _), (b_idx, _)| {
-                let e_a = self.registry.get(*a_idx).energy();
-                let e_b = self.registry.get(*b_idx).energy(); 
-                match (e_a, e_b) {
-                    (Some(a), Some(b)) => a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal),
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => std::cmp::Ordering::Equal,
-                }
+                let e_a = self.registry.get(*a_idx).ensemble_energy();
+                let e_b = self.registry.get(*b_idx).ensemble_energy(); 
+                e_a.partial_cmp(&e_b).unwrap_or(std::cmp::Ordering::Equal)
             });
 
             // Sort ensemble by energy (you could make this configurable)
@@ -176,7 +171,7 @@ impl fmt::Display for Timeline {
                 let occu = count as f64 / total as f64;
 
                 let name = self.registry.get(m_idx).name();
-                let energy = self.registry.get(m_idx).energy();
+                let energy = self.registry.get(m_idx).ensemble_energy();
 
                 writeln!(
                     f,
@@ -184,7 +179,7 @@ impl fmt::Display for Timeline {
                     time,
                     m_idx,
                     occu,
-                    energy.map_or("N/A".to_string(), |e| format!("{:10.2}", e)),
+                    format!("{:10.2}", energy),
                     name,
                 )?;
             }

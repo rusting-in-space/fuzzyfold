@@ -113,7 +113,7 @@ pub fn plot_occupancy_over_time(
         let color = Palette99::pick(i).mix(0.9); // pick a distinct color
 
         let name = timeline.registry.get(*id).name();
-        let energy = timeline.registry.get(*id).energy();
+        let energy = timeline.registry.get(*id).ensemble_energy();
 
         chart_left.draw_series(LineSeries::new(
                 series.iter().cloned().filter(|(t, _)| *t <= t_lin),
@@ -124,7 +124,7 @@ pub fn plot_occupancy_over_time(
             series.iter().cloned().filter(|(t, _)| *t >= t_lin),
             color.stroke_width(2),
         )).unwrap()
-            .label(format!("{:20} {:>6.2}", name.trim(), energy.unwrap_or(0.0)))   // <-- label for legend
+            .label(format!("{:20} {:>6.2}", name.trim(), energy))   // <-- label for legend
             .legend(move |(x, y)| {
                 PathElement::new(vec![(x, y), (x + 20, y)], color.stroke_width(2))
             });

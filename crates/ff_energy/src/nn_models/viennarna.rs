@@ -337,29 +337,29 @@ impl EnergyModel for ViennaRNA {
 
         match nn_loop {
             NearestNeighborLoop::Hairpin { closing: (i, j) } => {
-                self.hairpin(&sequence[*i..=*j])
+                self.hairpin(&sequence[*i as usize..=*j as usize])
             }
             NearestNeighborLoop::Interior { closing: (i, j), inner: (k, l) } => {
-                let left = &sequence[*i..=*k];
-                let right = &sequence[*l..=*j];
+                let left = &sequence[*i as usize..=*k as usize];
+                let right = &sequence[*l as usize..=*j as usize];
                 self.interior(left, right)
             }
             NearestNeighborLoop::Multibranch { closing: (i, j), branches } => {
                 let mut slices: Vec<&[Base]> = Vec::new();
-                let mut start = *i;
+                let mut start = *i as usize;
                 for &(k, l) in branches {
-                    slices.push(&sequence[start..=k]);
-                    start = l;
+                    slices.push(&sequence[start..=k as usize]);
+                    start = l as usize;
                 }
-                slices.push(&sequence[start..=*j]);
+                slices.push(&sequence[start..=*j as usize]);
                 self.multibranch(&slices)
             }
             NearestNeighborLoop::Exterior { branches } => {
                 let mut slices: Vec<&[Base]> = Vec::new();
                 let mut start = 0;
                 for &(k, l) in branches {
-                    slices.push(&sequence[start..=k]);
-                    start = l;
+                    slices.push(&sequence[start..=k as usize]);
+                    start = l as usize;
                 }
                 slices.push(&sequence[start..]);
                 self.exterior(&slices)

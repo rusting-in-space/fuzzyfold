@@ -1,26 +1,43 @@
 use std::convert::TryFrom;
+use crate::NAIDX;
 use crate::StructureError;
 use crate::DotBracket;
 use crate::DotBracketVec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MultiPairTable(pub Vec<Vec<Option<(usize, usize)>>>);
+pub struct MultiPairTable(pub Vec<Vec<Option<(NAIDX, NAIDX)>>>);
 
 impl MultiPairTable {
+    /// Total number of nucleotides across all strands
     pub fn len(&self) -> usize {
         self.0.iter().map(|s| s.len()).sum()
     }
 
+    /// True if there are no strands
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
-    
-    pub fn is_well_formed(&self, _loc1: (usize, usize), _loc2: (usize, usize)) -> bool {
-        todo!("not implemented");
+
+    /// Number of strands
+    pub fn num_strands(&self) -> usize {
+        self.0.len()
     }
 
-    pub fn get_pair(&self, loc: (usize, usize)) -> &Option<(usize, usize)> {
+    // NOTE: we may provide a different utility function in the 
+    // future that does usize <-> NAIDX conversions for readability.
+    pub fn get_pair(&self, loc: (usize, usize)) -> &Option<(NAIDX, NAIDX)> {
         &self.0[loc.0][loc.1]
+    }
+
+    /// Returns an iterator over all locations and their pair partners
+    pub fn iter(&self) -> impl Iterator<Item = ((usize, usize), &Option<(NAIDX, NAIDX)>)> {
+        self.0.iter().enumerate().flat_map(|(si, strand)| {
+            strand.iter().enumerate().map(move |(ni, pair)| ((si, ni), pair))
+        })
+    }
+
+    pub fn is_well_formed(&self, _loc1: (usize, usize), _loc2: (usize, usize)) -> bool {
+        todo!("not implemented");
     }
 }
 
@@ -31,14 +48,20 @@ impl TryFrom<&str> for MultiPairTable {
         let mut strand_idx = 0;
         let mut domain_idx = 0;
         let mut stack: Vec<(usize, usize)> = Vec::new(); // (strand_idx, domain_idx)
-        let mut pair_table: Vec<Vec<Option<(usize, usize)>>> = vec![vec![]];
+        let mut pair_table: Vec<Vec<Option<(NAIDX, NAIDX)>>> = vec![vec![]];
 
         for (i, ch) in s.chars().enumerate() {
             match ch {
                 '+' | '&' => {
-                    assert!(domain_idx + strand_idx > 0);
+                    if strand_idx == 0 && domain_idx == 0 {
+                        return Err(StructureError::InvalidToken(
+                                "strand break".into(),
+                                "complex".into(),
+                                0,
+                        ));
+                    }
+                    // skip empty final strand.
                     if i < s.len()-1 {
-                        // Don't append an empty vec in the "hack version"
                         pair_table.push(vec![]);
                     }
                     strand_idx += 1;
@@ -50,9 +73,10 @@ impl TryFrom<&str> for MultiPairTable {
                     domain_idx += 1;
                 }
                 ')' => {
-                    let (si, di) = stack.pop().ok_or(StructureError::UnmatchedMultiClose((strand_idx, domain_idx)))?;
-                    pair_table[si][di] = Some((strand_idx, domain_idx));
-                    pair_table[strand_idx].push(Some((si, di)));
+                    let (si, di) = stack.pop()
+                        .ok_or(StructureError::UnmatchedMultiClose((strand_idx, domain_idx)))?;
+                    pair_table[si][di] = Some((strand_idx as NAIDX, domain_idx as NAIDX));
+                    pair_table[strand_idx].push(Some((si as NAIDX, di as NAIDX)));
                     domain_idx += 1;
                 }
                 '.' => {
@@ -60,7 +84,10 @@ impl TryFrom<&str> for MultiPairTable {
                     domain_idx += 1;
                 }
                 _ => {
-                    return Err(StructureError::InvalidToken(format!("character '{}'", ch), "complex".to_string(), i));
+                    return Err(StructureError::InvalidToken(
+                        format!("character '{}'", ch), 
+                        "complex".into(), 
+                        i));
                 }
             }
         }
@@ -79,12 +106,18 @@ impl TryFrom<&DotBracketVec> for MultiPairTable {
         let mut strand_idx = 0;
         let mut domain_idx = 0;
         let mut stack: Vec<(usize, usize)> = Vec::new(); // (strand_idx, domain_idx)
-        let mut pair_table: Vec<Vec<Option<(usize, usize)>>> = vec![vec![]];
+        let mut pair_table: Vec<Vec<Option<(NAIDX, NAIDX)>>> = vec![vec![]];
 
         for dot in db.iter() {
             match dot {
                 DotBracket::Break => {
-                    assert!(domain_idx + strand_idx > 0);
+                    if strand_idx == 0 && domain_idx == 0 {
+                        return Err(StructureError::InvalidToken(
+                                "strand break".into(),
+                                "complex".into(),
+                                0,
+                        ));
+                    }
                     pair_table.push(vec![]);
                     strand_idx += 1;
                     domain_idx = 0;
@@ -95,9 +128,11 @@ impl TryFrom<&DotBracketVec> for MultiPairTable {
                     domain_idx += 1;
                 }
                 DotBracket::Close => {
-                    let (si, di) = stack.pop().ok_or(StructureError::UnmatchedMultiClose((strand_idx, domain_idx)))?;
-                    pair_table[si][di] = Some((strand_idx, domain_idx));
-                    pair_table[strand_idx].push(Some((si, di)));
+                    let (si, di) = stack.pop()
+                        .ok_or(StructureError::UnmatchedMultiClose(
+                            (strand_idx, domain_idx)))?;
+                    pair_table[si][di] = Some((strand_idx as NAIDX, domain_idx as NAIDX));
+                    pair_table[strand_idx].push(Some((si as NAIDX, di as NAIDX)));
                     domain_idx += 1;
                 }
                 DotBracket::Unpaired => {

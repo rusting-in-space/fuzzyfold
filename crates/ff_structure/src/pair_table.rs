@@ -1,10 +1,18 @@
+//! PairTable construction.
+//!
+//! The current convention is that errors can be raised at PairTable 
+//! construction, but then they are safe. Convertions out of pair tables
+//! may use the from trait, not try_from.
+//!
+
 use std::ops::{Deref, DerefMut};
 use std::convert::TryFrom;
+use crate::NAIDX;
 use crate::StructureError;
 use crate::{DotBracket, DotBracketVec};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PairTable(pub Vec<Option<usize>>);
+pub struct PairTable(pub Vec<Option<NAIDX>>);
 
 impl PairTable {
     /// Check if the substructure from `i..j` is well-formed:
@@ -14,7 +22,8 @@ impl PairTable {
 
         for k in i..j {
             if let Some(l) = self[k] {
-                if l < i || l >= j {
+                let ul = l as usize;
+                if ul < i || ul >= j {
                     return false; // points outside
                 }
             }
@@ -24,7 +33,7 @@ impl PairTable {
 }
 
 impl Deref for PairTable {
-    type Target = [Option<usize>];
+    type Target = [Option<NAIDX>];
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -49,8 +58,8 @@ impl TryFrom<&str> for PairTable {
                 '(' => stack.push(i),
                 ')' => {
                     let j = stack.pop().ok_or(StructureError::UnmatchedClose(i))?;
-                    table[i] = Some(j);
-                    table[j] = Some(i);
+                    table[i] = Some(j as NAIDX);
+                    table[j] = Some(i as NAIDX);
                 }
                 '.' => (),
                 _ => return Err(StructureError::InvalidToken(format!("character '{}'", c), "structure".to_string(), i)),
@@ -68,7 +77,7 @@ impl TryFrom<&DotBracketVec> for PairTable {
     type Error = StructureError;
 
     fn try_from(db: &DotBracketVec) -> Result<Self, Self::Error> {
-        let mut stack: Vec<usize> = Vec::new();
+        let mut stack = Vec::new();
         let mut table = vec![None; db.len()];
 
         for (i, dot) in db.iter().enumerate() {
@@ -76,8 +85,8 @@ impl TryFrom<&DotBracketVec> for PairTable {
                 DotBracket::Open => stack.push(i),
                 DotBracket::Close => {
                     let j = stack.pop().ok_or(StructureError::UnmatchedClose(i))?;
-                    table[i] = Some(j);
-                    table[j] = Some(i);
+                    table[i] = Some(j as NAIDX);
+                    table[j] = Some(i as NAIDX);
                 }
                 DotBracket::Unpaired => {}
                 DotBracket::Break => unreachable!("unexpected Break in single-stranded case"),

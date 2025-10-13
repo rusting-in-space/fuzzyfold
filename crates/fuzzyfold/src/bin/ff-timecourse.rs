@@ -84,14 +84,10 @@ fn main() -> Result<()> {
     let registry = MacrostateRegistry::from_files(
         &cli.macrostates,
         &sequence, 
-        Some(&emodel));
+        &emodel);
 
     println!("Macrostates:\n{}", registry.iter()
-        .map(|(_, m)| format!(" - {} {:6}", m.name(), 
-                if let Some(e) = m.energy() {
-                    format!("{:6.2}", e)
-                } else { "".to_string() }
-        ))
+        .map(|(_, m)| format!(" - {} {:6.2}", m.name(), m.ensemble_energy()))
         .collect::<Vec<_>>().join("\n"));
 
     let shared_registry = Arc::new(registry);
