@@ -75,17 +75,17 @@ impl Macrostate {
         self.ensemble.contains_key(structure)
     }
 
-    // /// Returns all first steps out of the macrostate, 
-    // /// their corresponding energy and k_{ms,j}
-    // pub fn get_neighbors<R: RateModel>(&self, rate_model: &R
-    // ) -> &AHashMap<DotBracketVec, (i32, f64)> {
-    //     //TODO for each structure enum neighbors,
-    //     // if neighbor not in macrostate, add it to results,
-    //     // if it does not exist, then update the energy and
-    //     // assign rate, otherwise debug_assert energy and 
-    //     // add the rate to the flux k_{ms, j}
-    //     self.neighbors.unwrap()
-    // }
+    /// Returns all first steps out of the macrostate, 
+    /// their corresponding energy and k_{ms,j}
+    pub fn get_neighbors<R: RateModel>(&self, rate_model: &R
+    ) -> &AHashMap<DotBracketVec, (i32, f64)> {
+        //TODO for each structure enum neighbors,
+        // if neighbor not in macrostate, add it to results,
+        // if it does not exist, then update the energy and
+        // assign rate, otherwise debug_assert energy and 
+        // add the rate to the flux k_{ms, j}
+        todo!("");
+    }
 
     //fn get_random_structure(&self) -> DotBracketVec;
     //fn get_probability(&self, structure: &DotBracketVec) -> f64;
