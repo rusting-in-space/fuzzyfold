@@ -11,17 +11,20 @@ use ff_structure::PairTable;
 use ff_energy::NucleotideVec;
 use ff_energy::EnergyModel;
 
+use crate::reaction::ApplyMove;
+use crate::LoopStructure;
 use crate::RateModel;
 use crate::{K0, KB};
 
 // A trait macrostate would not be able to store information.
-// It makes more sense to support different from traits.
+// It makes more sense to support different *From* traits.
 #[derive(Debug)]
 pub struct Macrostate {
     name: String,
+    //TODO: sequence / energy_model / rate_model?
     ensemble: AHashMap<DotBracketVec, (i32, f64)>,
     ensemble_energy: f64,
-    //NOTE: potentially using Once_cell for lazy initialization?
+    /// Lazy initialization (needs rate model).
     neighbors: Option<AHashMap<DotBracketVec, (i32, f64)>>,
 }
 
@@ -29,8 +32,8 @@ impl Macrostate {
 
     pub fn from_list<M: EnergyModel>(
         name: &str, 
-        structures: &[DotBracketVec], 
         sequence: &NucleotideVec, 
+        structures: &[DotBracketVec], 
         energy_model: &M, 
     ) -> Self {
         let mut ensemble = AHashMap::with_capacity(structures.len());
@@ -41,6 +44,7 @@ impl Macrostate {
             let pt = PairTable::try_from(dbv)
                 .expect("Invalid dot-bracket for energy evaluation");
             let en = energy_model.energy_of_structure(sequence, &pt);
+            //TODO: overflow corrections?
             let q = (-en as f64 / 100.0 / rt).exp();
             ensemble.insert(dbv.clone(), (en, q));
             q_sum += q;
@@ -76,15 +80,84 @@ impl Macrostate {
     }
 
     /// Returns all first steps out of the macrostate, 
-    /// their corresponding energy and k_{ms,j}
-    pub fn get_neighbors<R: RateModel>(&self, rate_model: &R
+    /// their corresponding energy and k_{ms,j
+    pub fn get_neighbors<E: EnergyModel, R: RateModel>(
+        &mut self,
+        sequence: &NucleotideVec,
+        energy_model: &E,
+        rate_model: &R,
     ) -> &AHashMap<DotBracketVec, (i32, f64)> {
-        //TODO for each structure enum neighbors,
-        // if neighbor not in macrostate, add it to results,
-        // if it does not exist, then update the energy and
-        // assign rate, otherwise debug_assert energy and 
-        // add the rate to the flux k_{ms, j}
-        todo!("");
+        if self.neighbors.is_none() {
+            let mut visited = AHashSet::default();
+            let mut neighbors = AHashMap::default();
+
+            let keys: Vec<DotBracketVec> = self.ensemble.keys().cloned().collect();
+            for dbr in keys {
+                self.dfs_expand::<E, R>(
+                    &dbr,
+                    None,
+                    sequence,
+                    energy_model,
+                    rate_model,
+                    &mut visited,
+                    &mut neighbors,
+                );
+            }
+            self.neighbors = Some(neighbors);
+        }
+
+        self.neighbors.as_ref().unwrap()
+    }
+
+    fn dfs_expand<'a, E: EnergyModel, R: RateModel>(
+        &mut self,
+        dbr: &DotBracketVec,
+        lss_opt: Option<&LoopStructure<'a, E>>,
+        sequence: &'a NucleotideVec,
+        energy_model: &'a E,
+        rate_model: &R,
+        visited: &mut AHashSet<DotBracketVec>,
+        neighbors: &mut AHashMap<DotBracketVec, (i32, f64)>,
+    ) {
+        // Stop if already processed
+        if !visited.insert(dbr.clone()) {
+            return;
+        }
+
+        // So the outer loop does not produce 
+        // all loop structures unnecessarily.
+        let mut lss = match lss_opt {
+            Some(existing) => existing.clone(),
+            None => {
+                let pairings = PairTable::try_from(dbr).unwrap();
+                LoopStructure::try_from((&**sequence, &pairings, energy_model)).unwrap()
+            }
+        };
+
+        let mut mdbr = dbr.clone();
+        for (bp_move, delta) in lss.all_moves() {
+            // Let's look up whether the move is 
+            // worth applying based on DotBracketVec.
+            mdbr.apply_move(bp_move);
+
+            if self.ensemble.contains_key(&mdbr) {
+                lss.apply_move(bp_move);
+                self.dfs_expand(&mdbr, Some(&lss), sequence, energy_model, rate_model, visited, neighbors);
+                lss.undo_move(bp_move);
+            } else {
+                // First step outside the macrostate
+                let rate = rate_model.rate(delta);
+
+                neighbors
+                    .entry(mdbr.clone())
+                    .and_modify(|(e, k)| {
+                        debug_assert!(*e == lss.energy() + delta);
+                        *k += rate;
+                    })
+                .or_insert((lss.energy() + delta, rate));
+            }
+            mdbr.undo_move(bp_move);
+        }
     }
 
     //fn get_random_structure(&self) -> DotBracketVec;
@@ -174,7 +247,7 @@ impl MacrostateRegistry {
                 file
             );
 
-            registry.insert(Macrostate::from_list(&name, &structures, sequence, model));
+            registry.insert(Macrostate::from_list(&name, sequence, &structures, model));
         }
 
         registry
@@ -227,43 +300,75 @@ impl MacrostateRegistry {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct StructureRegistry {
-    name: String,
-    pool: AHashSet<DotBracketVec>,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ff_structure::{DotBracketVec, PairTable};
+    use ff_energy::{ViennaRNA, NucleotideVec};
+    use crate::Metropolis;
 
-impl StructureRegistry {
-    pub fn from_list(name: &str, structures: &[DotBracketVec]) -> Self {
-        let mut pool = AHashSet::with_capacity(structures.len());
+    #[test]
+    fn test_macrostate_init() {
+        /*        
+        >lmin=lm3_bh=3.0
+        UCAGUCUUCGCUGCGCUGUAUCGAUUCGGUUUCAGUUUUUAUUGC
+        .((((....)))).((((........))))...............
+        .((((....)))).((((.(....).))))...............
+        .((((....))))..(((........)))................
+        .((((....)))).((((.(.....)))))...............
+        .(((......))).((((........))))...............
+        ..(((....)))..((((........))))...............
+        .(((......)))..(((........)))................
+        .(((.(...)))).((((........))))...............
+        */        
 
-        for (i, dbv) in structures.iter().enumerate() {
-            pool.insert(dbv.clone());
+        let seq = NucleotideVec::from_lossy("UCAGUCUUCGCUGCGCUGUAUCGAUUCGGUUUCAGUUUUUAUUGC");
+        let energy_model = ViennaRNA::default();
+
+        let s1 = DotBracketVec::try_from(".((((....)))).((((........))))...............").unwrap();
+        let s2 = DotBracketVec::try_from(".((((....)))).((((.(....).))))...............").unwrap();
+        let s3 = DotBracketVec::try_from(".((((....))))..(((........)))................").unwrap();
+        let s4 = DotBracketVec::try_from(".((((....)))).((((.(.....)))))...............").unwrap();
+        let s5 = DotBracketVec::try_from(".(((......))).((((........))))...............").unwrap();
+        let s6 = DotBracketVec::try_from("..(((....)))..((((........))))...............").unwrap();
+        let s7 = DotBracketVec::try_from(".(((......)))..(((........)))................").unwrap();
+        let s8 = DotBracketVec::try_from(".(((.(...)))).((((........))))...............").unwrap();
+
+        let mut macrostate = Macrostate::from_list(
+            "lmin=lm3_bh=3.0",
+            &seq, 
+            &[s1, s2, s3, s4, s5, s6, s7, s8], 
+            &energy_model
+        );
+
+        let ensemble = macrostate.ensemble().clone();
+        let mut ensemble: Vec<_> = ensemble.iter().collect();
+        ensemble.sort_by_key(|(_, (energy, _))| *energy);
+
+        let rate_model = Metropolis::new(energy_model.temperature(), 1.0);
+        let neighbors = macrostate
+            .get_neighbors(&seq, &energy_model, &rate_model).clone();
+        let mut neighbors: Vec<_> = neighbors.iter().collect();
+        neighbors.sort_by_key(|(_, (energy, _))| *energy);
+
+        assert!(!neighbors.is_empty(), "neighbors map should not be empty");
+        assert!(neighbors.iter().all(|(_, (_, k))| *k >= 0.0), "all rates must be non-negative");
+
+        println!("Macrostate '{}':", macrostate.name());
+        println!("  Ensemble size: {}", macrostate.ensemble().len());
+        for (dbr, (energy, prob)) in ensemble.iter() {
+            println!("  {} -> E(s) = {energy}, P(s) = {prob:.4}", dbr);
+        }
+        println!("  Neighbor count: {}", neighbors.len());
+        for (nbr, (energy, rate)) in neighbors.iter() {
+            println!("  {} -> E = {energy}, k = {rate:.4}", nbr);
         }
 
-        Self {
-            name: name.to_owned(),
-            pool,
-        }
-    }
-
-    /// Return the name of this registry (macrostate label)
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Return the number of unique structures in this registry.
-    pub fn len(&self) -> usize {
-        self.pool.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.pool.is_empty()
-    }
-
-    /// Return an iterator over all stored structures.
-    pub fn iter(&self) -> impl Iterator<Item = &DotBracketVec> {
-        self.pool.iter()
+        assert!(false);
+        //// 9. Ensure lazy caching works
+        //let ptr1 = neighbors.as_ptr();
+        //let ptr2 = macrostate.get_neighbors(&seq, &energy_model, &rate_model).as_ptr();
+        //assert_eq!(ptr1, ptr2, "cached neighbors should be reused (same address)");
     }
 }
 

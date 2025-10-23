@@ -1,6 +1,7 @@
 use std::fmt;
 use nohash_hasher::IntMap;
 use nohash_hasher::IntSet;
+use crate::reaction::Move;
 
 use ff_structure::NAIDX;
 use ff_structure::DotBracket;
@@ -128,6 +129,23 @@ pub struct LoopStructure<'a, M: EnergyModel> {
     pair_neighbors: IntMap<NAIDX, i32>, 
 }
 
+impl<'a, M: EnergyModel> Clone for LoopStructure<'a, M> {
+    fn clone(&self) -> Self {
+        Self {
+            registry: LoopCache {
+                sequence: self.registry.sequence,
+                model: self.registry.model,
+                loop_list: self.registry.loop_list.clone(),
+                l_indices: self.registry.l_indices.clone(),
+            },
+            loop_lookup: self.loop_lookup.clone(),
+            loop_neighbors: self.loop_neighbors.clone(),
+            pair_list: self.pair_list.clone(),
+            pair_neighbors: self.pair_neighbors.clone(),
+        }
+    }
+}
+
 impl<'a, M: EnergyModel> fmt::Debug for LoopStructure<'a, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LoopStructure")
@@ -152,8 +170,22 @@ impl<'a, M: EnergyModel> fmt::Display for LoopStructure<'a, M> {
     }
 }
 
-
 impl<'a, M: EnergyModel> LoopStructure<'a, M> {
+    pub fn all_moves(&self) -> Vec<(Move, i32)> {
+        let mut result = Vec::new();
+
+        for (_, add_neighbors) in self.get_add_neighbors_per_loop().iter() {
+            for &(i, j, delta) in add_neighbors {
+                result.push((Move::Add { i: i as u16, j: j as u16 }, delta));
+            }
+        }
+        for (i, j, delta) in self.get_del_neighbors() {
+            result.push((Move::Del { i: i as u16, j: j as u16 }, delta));
+        }
+
+        result
+    }
+
     /// Return all add neighbors, including an index that 
     /// is necessary to access the actual loop via loop_lookup.
     pub fn get_add_neighbors_per_loop(&self) -> &IntMap<usize, MoveEnergies> {

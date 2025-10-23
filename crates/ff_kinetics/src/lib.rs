@@ -2,6 +2,7 @@ pub mod timeline;
 pub mod timeline_io;
 pub mod timeline_plotting;
 pub mod macrostates;
+pub mod reaction;
 
 mod rate_model;
 mod loop_structure;
