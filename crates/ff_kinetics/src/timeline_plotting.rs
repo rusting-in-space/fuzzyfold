@@ -1,10 +1,11 @@
+use ff_energy::EnergyModel;
 use plotters::prelude::*;
 use plotters::style::Palette99;
 
 use crate::timeline::Timeline;
 
-pub fn plot_occupancy_over_time(
-    timeline: &Timeline, 
+pub fn plot_occupancy_over_time<'a, E: EnergyModel>(
+    timeline: &Timeline<'a, E>, 
     filename: &str,
     t_lin: f64,
     t_log: f64,
@@ -113,7 +114,7 @@ pub fn plot_occupancy_over_time(
         let color = Palette99::pick(i).mix(0.9); // pick a distinct color
 
         let name = timeline.registry.get(*id).name();
-        let energy = timeline.registry.get(*id).ensemble_energy();
+        let energy = timeline.registry.get(*id).ensemble_energy().unwrap_or(0.0);
 
         chart_left.draw_series(LineSeries::new(
                 series.iter().cloned().filter(|(t, _)| *t <= t_lin),

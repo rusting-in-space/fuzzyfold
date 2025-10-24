@@ -81,13 +81,11 @@ fn main() -> Result<()> {
         cli.num_sims, cli.kinetics, cli.simulation, cli.energy);
 
     let times = cli.simulation.get_output_times();
-    let registry = MacrostateRegistry::from_files(
-        &cli.macrostates,
-        &sequence, 
-        &emodel);
+    let mut registry = MacrostateRegistry::from((&sequence, &emodel));
+    registry.insert_files(&cli.macrostates);
 
     println!("Macrostates:\n{}", registry.iter()
-        .map(|(_, m)| format!(" - {} {:6.2}", m.name(), m.ensemble_energy()))
+        .map(|(_, m)| format!(" - {} {:6.2}", m.name(), m.ensemble_energy().unwrap_or(0.0)))
         .collect::<Vec<_>>().join("\n"));
 
     let shared_registry = Arc::new(registry);
@@ -115,7 +113,7 @@ fn main() -> Result<()> {
         .progress_chars("#>-"),
     );
 
-    let timelines: Vec<Timeline> = (0..cli.num_sims)
+    let timelines: Vec<_> = (0..cli.num_sims)
         .into_par_iter()
         .map_init(
             || pb.clone(), // each thread gets a clone

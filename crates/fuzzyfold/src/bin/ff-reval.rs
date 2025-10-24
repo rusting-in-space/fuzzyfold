@@ -1,11 +1,9 @@
 use std::io::{stdin, Write, BufRead};
-use log::{debug};
 use env_logger::Builder;
 use clap::{Parser, Args, ArgAction};
 use anyhow::Result;
 use anyhow::anyhow;
 
-use ff_energy::ViennaRNA;
 use ff_energy::EnergyModel;
 use ff_energy::NucleotideVec;
 use ff_structure::PairTable;
@@ -55,13 +53,8 @@ fn init_logging(verbosity: u8) {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     init_logging(cli.eval.verbose);
-    let param_file = cli.energy.param_file();
 
-    debug!("Using parameter file: {:?}", param_file);
-    debug!("Temperature: {} °C", cli.energy.temperature);
-    let mut model = ViennaRNA::from_parameter_file(param_file)?;
-    model.set_temperature(cli.energy.temperature);
-
+    let model = cli.energy.build_model();
 
     let mut lines = stdin().lock().lines();
 
@@ -87,9 +80,9 @@ fn main() -> Result<()> {
         let energy = model.energy_of_structure(&sequence, &pairings);
 
         let mark = if (ref_en * 100f64).round() as i32 != energy { "*" } else { "" };
-        if true || mark == "*" {
+        //if mark == "*" {
             println!("{} {:6.2} {:6.2} {}", structure, energy as f64 / 100.0, ref_en, mark);
-        }
+        //}
     }
 
     Ok(())

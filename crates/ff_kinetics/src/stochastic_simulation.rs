@@ -15,22 +15,15 @@ fn log_add(a: f64, b: f64) -> f64 {
 }
 
 /// Compute log(exp(a) - exp(b)) safely, requires a >= b.
-/// Returns -inf if the result is numerically zero or negative.
+/// Returns None if the result is numerically zero or negative.
 fn log_sub(a: f64, b: f64) -> Option<f64> {
     if b == f64::NEG_INFINITY {
         return Some(a);
     }
-     // allow small epsilon to absorb roundoff
     if b > a + 1e-12 {
-        return None; // inconsistent state, recompute needed
+        return None; 
     }
-
-    let gap = a - b;
-    //if gap < 1e-12 {
-    //    return None; // too close, cancellation risk
-    //}
-
-    let diff = (-gap).exp(); // in (0, 1]
+    let diff = (b - a).exp(); // in (0, 1]
     Some(a + (1.0 - diff).ln())
 }
 

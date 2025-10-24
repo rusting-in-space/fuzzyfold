@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 use std::error::Error;
+use ff_energy::EnergyModel;
 use nohash_hasher::IntMap;
 use ff_structure::DotBracketVec; 
 
@@ -98,18 +99,17 @@ impl Timepoint {
 
 }
 
-#[derive(Debug)]
-pub struct Timeline {
+pub struct Timeline<'a, E: EnergyModel> {
     /// Registry of all macrostates (used to classify structures)
-    pub registry: Arc<MacrostateRegistry>,
+    pub registry: Arc<MacrostateRegistry<'a, E>>,
 
     /// One `Timepoint` per output time in the simulation
     pub points: Vec<Timepoint>,
 }
 
-impl Timeline {
+impl<'a, E: EnergyModel> Timeline<'a, E> {
     /// Build a new empty timeline for given times and an existing macrostate registry.
-    pub fn new(times: &[f64], registry: Arc<MacrostateRegistry>) -> Self {
+    pub fn new(times: &[f64], registry: Arc<MacrostateRegistry<'a, E>>) -> Self {
         let points = times.iter().map(|&t| Timepoint::new(t)).collect();
         Self { registry, points }
     }
@@ -131,7 +131,7 @@ impl Timeline {
         self.points.iter().enumerate()
     }
 
-    pub fn merge(&mut self, other: Timeline) {
+    pub fn merge(&mut self, other: Timeline<'a, E>) {
         assert!(
             Arc::ptr_eq(&self.registry, &other.registry),
             "Cannot merge timelines with different registries"
@@ -148,7 +148,7 @@ impl Timeline {
     }
 }
 
-impl fmt::Display for Timeline {
+impl<'a, E: EnergyModel> fmt::Display for Timeline<'a, E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // DRF header
         writeln!(f, "{:>13} {:>5} {:>12} {:>10} {:>25}", "time", "id", "occupancy", "energy", "macrostate")?;
@@ -171,7 +171,7 @@ impl fmt::Display for Timeline {
                 let occu = count as f64 / total as f64;
 
                 let name = self.registry.get(m_idx).name();
-                let energy = self.registry.get(m_idx).ensemble_energy();
+                let energy = self.registry.get(m_idx).ensemble_energy().unwrap_or(0.0);
 
                 writeln!(
                     f,

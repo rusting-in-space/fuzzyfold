@@ -176,11 +176,11 @@ impl<'a, M: EnergyModel> LoopStructure<'a, M> {
 
         for (_, add_neighbors) in self.get_add_neighbors_per_loop().iter() {
             for &(i, j, delta) in add_neighbors {
-                result.push((Move::Add { i: i as u16, j: j as u16 }, delta));
+                result.push((Move::Add { i, j }, delta));
             }
         }
         for (i, j, delta) in self.get_del_neighbors() {
-            result.push((Move::Del { i: i as u16, j: j as u16 }, delta));
+            result.push((Move::Del { i, j }, delta));
         }
 
         result
