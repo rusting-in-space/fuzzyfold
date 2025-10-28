@@ -7,6 +7,7 @@ use ff_energy::NucleotideVec;
 use ff_energy::EnergyModel;
 use ff_energy::ViennaRNA;
 
+use ff_kinetics::macrostates::ExitMacrostate;
 use ff_kinetics::macrostates::Macrostate;
 use ff_kinetics::Metropolis;
 
@@ -35,12 +36,12 @@ pub fn macrostate_neighbors(c: &mut Criterion) {
 
     group.bench_function("Neighborhood generation", |b| {
         b.iter(|| {
-            let _ = Macrostate::from_macrostate_neighbors(
+            let _ = ExitMacrostate::from((
                 &macrostate, 
-                &seq, 
+                &seq[..], 
                 &energy_model, 
                 &rate_model
-            );
+            ));
         });
     });
 }

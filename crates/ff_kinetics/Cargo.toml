@@ -18,6 +18,7 @@ ff_energy.workspace = true
 ahash.workspace = true
 criterion.workspace = true
 nohash-hasher.workspace = true
+ndarray.workspace = true
 plotters.workspace = true
 rand.workspace = true
 serde.workspace = true
