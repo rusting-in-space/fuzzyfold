@@ -74,6 +74,7 @@ fn main() -> Result<()> {
                 t + tinc,
                 1.0 / flux,
             );
+            true
         },
     );
     Ok(())

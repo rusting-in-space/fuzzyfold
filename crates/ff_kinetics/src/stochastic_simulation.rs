@@ -239,7 +239,7 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
     )
     where
         R: Rng + ?Sized,
-        F: FnMut(f64, f64, f64, &LoopStructure<'a, M>),
+        F: FnMut(f64, f64, f64, &LoopStructure<'a, M>) -> bool,
     {
         let mut t = 0.;
 
@@ -253,8 +253,13 @@ impl<'a, M: EnergyModel, K: RateModel> LoopStructureSSA<'a, M, K> {
             let flux = self.log_flux.exp();
             // sample waiting time ~ Exp(flux)
             let tinc = -rng.random::<f64>().ln() / flux;
+
             // Callback bewore applying the waiting time.
-            callback(t, tinc, flux, &self.loopstructure);
+            // If callback return's false, then abort the simulation!
+            if !callback(t, tinc, flux, &self.loopstructure) {
+                break;
+            }
+
             t += tinc;
 
             // sample reaction, probably the bottleneck for now
@@ -355,6 +360,7 @@ mod tests {
                 "Step {}: t={:.4}, Δt={:.4}, flux={:.3e}",
                 steps, t, tinc, flux
             );
+            true
         });
 
         assert!(steps > 0, "Simulation must perform at least one step");

@@ -43,7 +43,7 @@ fn simulate_all_from_file(path: &str) {
         simulator.simulate(
             &mut rng, 
             black_box(10.0), 
-            |_t, _ti, _fl, _ls| { }
+            |_t, _ti, _fl, _ls| { true }
         );
     }
 }

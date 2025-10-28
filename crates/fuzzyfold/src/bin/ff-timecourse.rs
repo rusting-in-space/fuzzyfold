@@ -133,6 +133,7 @@ fn main() -> Result<()> {
                             timeline.assign_structure(t_idx, &structure);
                             t_idx += 1;
                         }
+                        true
                     },
                 );
 
