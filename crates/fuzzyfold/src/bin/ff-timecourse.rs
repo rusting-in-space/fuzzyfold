@@ -19,7 +19,7 @@ use ff_kinetics::LoopStructure;
 use ff_kinetics::LoopStructureSSA;
 use ff_kinetics::timeline::Timeline;
 use ff_kinetics::timeline_plotting::plot_occupancy_over_time;
-use ff_kinetics::macrostates::MacrostateRegistry;
+use ff_kinetics::MacrostateRegistry;
 
 use fuzzyfold::input_parsers::read_fasta_like_input;
 use fuzzyfold::energy_parsers::EnergyModelArguments;

@@ -29,7 +29,7 @@ name = "stochastic_simulation"
 harness = false
 
 [[bench]]
-name = "macrostates"
+name = "exit_macrostates"
 harness = false
 
 [badges]

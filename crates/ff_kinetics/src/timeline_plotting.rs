@@ -113,8 +113,8 @@ pub fn plot_occupancy_over_time<'a, E: EnergyModel>(
     for (i, (id, series)) in trajectories.iter().enumerate() {
         let color = Palette99::pick(i).mix(0.9); // pick a distinct color
 
-        let name = timeline.registry.get(*id).name();
-        let energy = timeline.registry.get(*id).ensemble_energy().unwrap_or(0.0);
+        let name = timeline.registry.macrostates()[*id].name();
+        let energy = timeline.registry.macrostates()[*id].ensemble_energy().unwrap_or(0.0);
 
         chart_left.draw_series(LineSeries::new(
                 series.iter().cloned().filter(|(t, _)| *t <= t_lin),

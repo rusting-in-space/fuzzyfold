@@ -26,7 +26,7 @@ impl<'a, E: EnergyModel> Timeline<'a, E> {
             points: self.points.iter().map(|tp| {
                 let ensemble = tp.ensemble.iter()
                     .map(|(id, count)| {
-                        let name = self.registry.get(*id).name().to_string();
+                        let name = self.registry.macrostates()[*id].name().to_string();
                         (name, *count)
                     })
                     .collect();

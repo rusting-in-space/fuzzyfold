@@ -1,22 +1,63 @@
-use core::f64;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io;
 use std::path::PathBuf;
 use ahash::AHashMap;
+use rand::Rng;
 
-use ahash::AHashSet;
 use ff_structure::DotBracketVec;
 use ff_structure::PairTable;
 use ff_energy::NucleotideVec;
 use ff_energy::EnergyModel;
-use ff_energy::Base;
 
-use crate::reaction::ApplyMove;
-use crate::LoopStructure;
-use crate::RateModel;
 use crate::{K0, KB};
 
+/// Represents a **macrostate**, i.e. an ensemble of secondary structures
+/// sharing a common label or coarse-grained feature.
+///
+/// A `Macrostate` groups multiple concrete structures (`DotBracketVec`) that
+/// belong to the same basin or equivalence class in the folding landscape.
+/// Each entry in the ensemble is stored with:
+///
+/// - its **energy** value (`i32`, in dcal/mol = 100 * kcal/mol),
+/// - its **probability within the macrostate** (`f64`, proportional to exp(-E/RT)).
+///
+/// The optional `ensemble_energy` field stores the free energy of the
+/// macrostate (-kt ln(Q)) calculated at initialization. 
+///
+/// # Fields
+/// - `name`: Identifier or label for this macrostate `α` (e.g. `"Local minimum 1"`
+///   or `"Hairpin A"`).
+/// - `ensemble`: Mapping from secondary structure representations `s` to `(E(s),
+///   P(s|α))`.
+/// - `ensemble_energy`: The free energy of the macrostate `(P(α))`.
+///
+/// # Notes
+/// - The `MacrostateRegisty` initializes a "**catch-all** macrostate", which is
+///   called "Unassigned", has no structures and ensemble_energy = None.
+/// - Will panic if a structure is not well-formed.
+///
+/// # Example
+/// ```rust
+/// use ff_kinetics::Macrostate;
+/// use ff_structure::DotBracketVec;
+/// use ff_energy::NucleotideVec;
+/// use ff_energy::ViennaRNA;
+///
+/// let energy_model = ViennaRNA::default();
+/// let seq = NucleotideVec::try_from("CGCAAAGCG").unwrap();
+/// let db1 = DotBracketVec::try_from("(((...)))").unwrap();
+/// let db2 = DotBracketVec::try_from("((.....))").unwrap();
+/// let db3 = DotBracketVec::try_from(".((...)).").unwrap();
+///
+/// let ms = Macrostate::from_list(
+///    "test",
+///    &seq,
+///    &[db1, db2, db3],
+///    &energy_model,
+/// );
+/// ```
 #[derive(Debug)]
 pub struct Macrostate {
     name: String,
@@ -25,9 +66,19 @@ pub struct Macrostate {
 }
 
 impl Macrostate {
+    /// Initialize a catch-all macrostate. 
+    /// (This is the default macrostate when initializing a MacrostateRegisty.)
+    pub fn new_catch_all(name: &str) -> Self {
+        Macrostate { 
+            name: name.to_owned(),
+            ensemble: AHashMap::new(),
+            ensemble_energy: None,
+        }
+    }
+
     pub fn from_list<'a, E: EnergyModel>(
         name: &str, 
-        sequence: &'a [Base],
+        sequence: &'a NucleotideVec,
         structures: &[DotBracketVec], 
         energy_model: &'a E, 
     ) -> Self {
@@ -43,7 +94,7 @@ impl Macrostate {
             ensemble.insert(dbv.clone(), (en, q));
             q_sum += q;
         }
-        // Normalize probabilities
+        // Turn partition function contributions into probabilities.
         for (_dbv, (_en, prob)) in ensemble.iter_mut() {
             *prob /= q_sum;
         }
@@ -58,7 +109,6 @@ impl Macrostate {
         &self.name
     }
 
-    /// Returns all secondary structures, their corresponding energy and probablility
     pub fn ensemble(&self) -> &AHashMap<DotBracketVec, (i32, f64)> {
         &self.ensemble
     }
@@ -66,163 +116,56 @@ impl Macrostate {
     pub fn ensemble_energy(&self) -> Option<f64> {
         self.ensemble_energy
     }
+
+    /// Number of secondary structures.
+    pub fn len(&self) -> usize {
+        self.ensemble.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ensemble.is_empty()
+    }
     
+    /// Check if a secondary structure is contained in this macrostate.
     pub fn contains(&self, structure: &DotBracketVec) -> bool {
         self.ensemble.contains_key(structure)
     }
 
+    /// Randomly pick a structure according to its probability in the ensemble.
     pub fn get_random_microstate(&self) -> Option<DotBracketVec> {
         if self.ensemble.is_empty() {
-            return None
+            return None;
         }
-        //TODO!
+
+        debug_assert!({ // Assert correct normalization
+            let sum: f64 = self.ensemble.values().map(|(_, p)| p).sum();
+            (sum - 1.0).abs() < 1e-6
+        }, "Ensemble probabilities are not normalized!");
+
+        let mut r = rand::rng().random::<f64>(); // random in [0, 1)
+
+        for (dbv, &(_, p)) in &self.ensemble {
+            if r < p {
+                return Some(dbv.clone());
+            }
+            r -= p;
+        }
+        eprintln!("WARNING: rounding error observed. This should be rare!");
         self.ensemble.keys().next().cloned()
-    }
-
-    fn get_energy(&self, structure: &DotBracketVec) -> Option<i32> {
-        if let Some(data) = self.ensemble.get(structure) {
-            return Some(data.0)
-        }
-        None
-    }
-
-    fn get_probability(&self, structure: &DotBracketVec) -> Option<f64> {
-        if let Some(data) = self.ensemble.get(structure) {
-            return Some(data.1)
-        }
-        None
-    }
-}
-
-#[derive(Debug)]
-pub struct ExitMacrostate<'a> {
-    macrostate: &'a Macrostate,
-    ensemble: AHashMap<DotBracketVec, (i32, f64)>,
-    k_alpha: f64,
-}
-
-impl<'a, E: EnergyModel, R: RateModel> From<(&'a Macrostate, &'a [Base], &'a E, &'a R)> for ExitMacrostate<'a> {
-    fn from((macrostate, sequence, energy_model, rate_model): (&'a Macrostate, &'a [Base], &'a E, &'a R)) -> Self {
-        let mut visited = AHashSet::default();
-        let mut ensemble = AHashMap::default();
-        for dbr in macrostate.ensemble().keys() {
-            find_neighbors::<E, R>(
-                dbr,
-                None,
-                sequence,
-                energy_model,
-                rate_model,
-                macrostate.ensemble(),
-                &mut visited,
-                &mut ensemble,
-            );
-        }
-
-        let mut k_alpha = 0.0;
-        for (dbv, (en, k_ij)) in &ensemble {
-            let pt = PairTable::try_from(dbv)
-                .expect("Invalid dot-bracket for energy evaluation");
-            debug_assert_eq!(*en, energy_model.energy_of_structure(sequence, &pt));
-            k_alpha += k_ij;
-        }
-
-        ExitMacrostate {
-            macrostate,
-            ensemble,
-            k_alpha,
-        }
-    }
-}
-
-impl<'a> ExitMacrostate<'a> {
-    /// Returns all secondary structures, their corresponding energy and probablility
-    pub fn ensemble(&self) -> &AHashMap<DotBracketVec, (i32, f64)> {
-        &self.ensemble
-    }
-
-    pub fn k_alpha(&self) -> f64 {
-        self.k_alpha
-    }
-    
-    pub fn contains(&self, structure: &DotBracketVec) -> bool {
-        self.ensemble.contains_key(structure)
-    }
-
-    pub fn get_random_microstate(&self) -> Option<DotBracketVec> {
-        if self.ensemble.is_empty() {
-            return None
-        }
-        //TODO!
-        self.ensemble.keys().next().cloned()
-    }
-}
-
-
-fn find_neighbors<'a, E: EnergyModel, R: RateModel>(
-    dbr: &DotBracketVec,
-    lss_opt: Option<&LoopStructure<'a, E>>,
-    sequence: &'a [Base],
-    energy_model: &'a E,
-    rate_model: &'a R,
-    origin: &AHashMap<DotBracketVec, (i32, f64)>,
-    visited: &mut AHashSet<DotBracketVec>,
-    neighbors: &mut AHashMap<DotBracketVec, (i32, f64)>,
-) {
-    // Stop if already processed
-    if !visited.insert(dbr.clone()) {
-        return;
-    }
-
-    // So the outer loop does not produce 
-    // all loop structures unnecessarily.
-    let mut lss = match lss_opt {
-        Some(existing) => existing.clone(),
-        None => {
-            let pairings = PairTable::try_from(dbr).unwrap();
-            LoopStructure::try_from((sequence, &pairings, energy_model)).unwrap()
-        }
-    };
-
-    let mut mdbr = dbr.clone();
-    for (bp_move, delta) in lss.all_moves() {
-        // Let's look up whether the move is 
-        // worth applying based on DotBracketVec.
-        mdbr.apply_move(bp_move);
-
-        if origin.contains_key(&mdbr) {
-            lss.apply_move(bp_move);
-            find_neighbors(&mdbr, Some(&lss), sequence, energy_model, rate_model, origin, visited, neighbors);
-            lss.undo_move(bp_move);
-        } else {
-            // Rate to step out of the macrostate => P(i|alpha) * k_{i->j}
-            let rate = origin.get(dbr).unwrap().1 * rate_model.rate(delta);
-            neighbors
-                .entry(mdbr.clone())
-                .and_modify(|(e, k)| {
-                    debug_assert!(*e == lss.energy() + delta);
-                    *k += rate;
-                })
-            .or_insert((lss.energy() + delta, rate));
-        }
-        mdbr.undo_move(bp_move);
     }
 }
 
 /// A registy to collect macrostate definitions.
 pub struct MacrostateRegistry<'a, E: EnergyModel> {
-    pub sequence: &'a NucleotideVec,
-    pub energy_model: &'a E,
+    sequence: &'a NucleotideVec,
+    energy_model: &'a E,
     /// By convention: macrostates[0] = unassigned.
-    pub macrostates: Vec<Macrostate>,
+    macrostates: Vec<Macrostate>,
 }
 
 impl<'a, E: EnergyModel> From<(&'a NucleotideVec, &'a E)> for MacrostateRegistry<'a, E> {
     fn from((sequence, energy_model): (&'a NucleotideVec, &'a E)) -> Self {
-        let macrostates = vec![Macrostate {
-            name: "Unassigned".to_string(),
-            ensemble: AHashMap::new(),
-            ensemble_energy: None,
-        }];
+        let macrostates = vec![Macrostate::new_catch_all("Unassigned")];
 
         MacrostateRegistry {
             sequence,
@@ -232,68 +175,78 @@ impl<'a, E: EnergyModel> From<(&'a NucleotideVec, &'a E)> for MacrostateRegistry
     }
 }
 
+fn io_err(msg: &str, src: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, format!("{} in {}", msg, src))
+}
+
 impl<'a, E: EnergyModel> MacrostateRegistry<'a, E> {
 
-    //TODO: preliminary interface: directly from input files.
-    pub fn insert_files(&mut self, files: &[PathBuf]) {
+    /// High-level entry: read one or more macrostate files from disk.
+    pub fn insert_files(&mut self, files: &[PathBuf]) -> io::Result<()> {
         for file in files {
-            let fh = File::open(file)
-                .unwrap_or_else(|_| panic!("Failed to open macrostate file {:?}", file));
-            let mut lines = BufReader::new(fh).lines();
+            let fh = File::open(file)?;
+            let reader = BufReader::new(fh);
+            self.insert_from_reader(reader, &file.display().to_string())?;
+        }
+        Ok(())
+    }
 
-            // --- Parse header line (must exist)
-            let header_line = lines
-                .next()
-                .expect("Macrostate file is missing a header line")
-                .expect("Failed to read header line");
+    pub fn insert_from_reader<R: BufRead>(&mut self, reader: R, source: &str
+    ) -> io::Result<()> {
+        let mut lines = reader.lines();
 
-            let name = header_line
-                .strip_prefix('>')
-                .unwrap_or_else(|| panic!("First line must start with '>' in {:?}", file))
-                .trim()
-                .to_string();
+        let header_line = lines
+            .next()
+            .ok_or_else(|| io_err("Missing header line", source))??
+            .trim()
+            .to_string();
 
-            // --- Parse sequence line (must exist)
-            let seq_line = lines
-                .next()
-                .expect("Macrostate file is missing a sequence line")
-                .expect("Failed to read sequence line");
+        let name = header_line
+            .strip_prefix('>')
+            .ok_or_else(|| io_err("First line must start with '>'", source))?
+            .trim()
+            .to_string();
 
-            let file_seq = NucleotideVec::from_lossy(seq_line.trim());
-            assert_eq!(
-                file_seq, *self.sequence,
-                "Sequence in macrostate file {:?} does not match provided input sequence",
-                file
-            );
+        let seq_line = lines
+            .next()
+            .ok_or_else(|| io_err("Missing sequence line", source))??
+            .trim()
+            .to_string();
 
-            // --- Parse structures (must be at least one)
-            let mut structures = Vec::new();
-            for (lineno, line) in lines.enumerate() {
-                let line = line.expect("Failed to read line");
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                match DotBracketVec::try_from(line) {
-                    Ok(dbv) => structures.push(dbv),
-                    Err(e) => panic!(
-                        "Error parsing dot-bracket at line {} in {:?}: {:?}",
-                        lineno + 3, // +3 to account for header+sequence lines
-                        file,
-                        e
-                    ),
+        let file_seq = NucleotideVec::from_lossy(&seq_line);
+        if &file_seq != self.sequence {
+            return Err(io_err("Sequence does not match input sequence", source));
+        }
+
+        let mut structures = Vec::new();
+        for (lineno, line) in lines.enumerate() {
+            let line = line?;
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            match DotBracketVec::try_from(line) {
+                Ok(dbv) => structures.push(dbv),
+                Err(e) => {
+                    return Err(io_err(
+                        &format!("Invalid dot-bracket at line {}: {:?}", lineno + 3, e),
+                        source,
+                    ));
                 }
             }
-
-            assert!(
-                !structures.is_empty(),
-                "Macrostate file {:?} does not contain any structures", file
-            );
-
-            self.macrostates.push(Macrostate::from_list(
-                    &name, self.sequence, &structures, self.energy_model
-            ));
         }
+
+        if structures.is_empty() {
+            return Err(io_err("No structures found", source));
+        }
+
+        self.macrostates.push(Macrostate::from_list(
+            &name,
+            self.sequence,
+            &structures,
+            self.energy_model,
+        ));
+        Ok(())
     }
 
     /// Try to classify a structure:
@@ -319,9 +272,16 @@ impl<'a, E: EnergyModel> MacrostateRegistry<'a, E> {
         }
     }
 
-    /// Get a macrostate by index
-    pub fn get(&self, idx: usize) -> &Macrostate {
-        &self.macrostates[idx]
+    pub fn sequence(&self) -> &NucleotideVec {
+        self.sequence
+    }
+
+    pub fn energy_model(&self) -> &E {
+        self.energy_model
+    }
+
+    pub fn macrostates(&self) -> &Vec<Macrostate> {
+        &self.macrostates
     }
 
     /// Number of macrostates, including the catch-all unassigned macrostate.
@@ -341,58 +301,11 @@ impl<'a, E: EnergyModel> MacrostateRegistry<'a, E> {
 }
 
 
-pub struct ExitMacrostateRegistry<'a, E: EnergyModel, R: RateModel> {
-    pub registry: &'a MacrostateRegistry<'a, E>,
-    pub rate_model: &'a R,
-    /// By convention: macrostates[0] = unassigned.
-    pub exit_macrostates: Vec<ExitMacrostate<'a>>,
-}
-
-
-impl<'a, E: EnergyModel, R: RateModel>
-    From<(&'a MacrostateRegistry<'a, E>, &'a R)>
-    for ExitMacrostateRegistry<'a, E, R>
-{
-    fn from((registry, rate_model): (&'a MacrostateRegistry<'a, E>, &'a R)) -> Self {
-        assert!(
-            !registry.macrostates.is_empty(),
-            "Cannot build ExitMacrostateRegistry: no macrostates present."
-        );
-
-        let mut exit_macrostates = Vec::with_capacity(registry.macrostates.len());
-
-        // Index 0 is unassigned, so just an empty placeholder.
-        exit_macrostates.push(ExitMacrostate {
-            macrostate: &registry.macrostates[0],
-            ensemble: AHashMap::default(),
-            k_alpha: 0.0,
-        });
-
-        // Compute neighbors for each real macrostate
-        for (i, ms) in registry.macrostates.iter().enumerate().skip(1) {
-            eprintln!("Calculating neighbors for macrostate #{i}: {}", ms.name());
-            let exit_ms = ExitMacrostate::from((
-                ms, 
-                &registry.sequence[..],
-                registry.energy_model,
-                rate_model,
-            ));
-            exit_macrostates.push(exit_ms);
-        }
-
-        ExitMacrostateRegistry {
-            registry, 
-            rate_model,
-            exit_macrostates,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
     use ff_energy::ViennaRNA;
-    use crate::Metropolis;
 
     #[test]
     fn test_macrostate_init() {
@@ -409,27 +322,26 @@ mod tests {
         .(((.(...)))).((((........))))...............
         */        
 
-        let seq = NucleotideVec::from_lossy("UCAGUCUUCGCUGCGCUGUAUCGAUUCGGUUUCAGUUUUUAUUGC");
         let energy_model = ViennaRNA::default();
-        let rate_model = Metropolis::new(energy_model.temperature(), 1.0);
-
-        let s1 = DotBracketVec::try_from(".((((....)))).((((........))))...............").unwrap();
-        let s2 = DotBracketVec::try_from(".((((....)))).((((.(....).))))...............").unwrap();
-        let s3 = DotBracketVec::try_from(".((((....))))..(((........)))................").unwrap();
-        let s4 = DotBracketVec::try_from(".((((....)))).((((.(.....)))))...............").unwrap();
-        let s5 = DotBracketVec::try_from(".(((......))).((((........))))...............").unwrap();
-        let s6 = DotBracketVec::try_from("..(((....)))..((((........))))...............").unwrap();
-        let s7 = DotBracketVec::try_from(".(((......)))..(((........)))................").unwrap();
-        let s8 = DotBracketVec::try_from(".(((.(...)))).((((........))))...............").unwrap();
+        let seq = NucleotideVec::try_from("UCAGUCUUCGCUGCGCUGUAUCGAUUCGGUUUCAGUUUUUAUUGC").unwrap();
+        let db1 = DotBracketVec::try_from(".((((....)))).((((........))))...............").unwrap();
+        let db2 = DotBracketVec::try_from(".((((....)))).((((.(....).))))...............").unwrap();
+        let db3 = DotBracketVec::try_from(".((((....))))..(((........)))................").unwrap();
+        let db4 = DotBracketVec::try_from(".((((....)))).((((.(.....)))))...............").unwrap();
+        let db5 = DotBracketVec::try_from(".(((......))).((((........))))...............").unwrap();
+        let db6 = DotBracketVec::try_from("..(((....)))..((((........))))...............").unwrap();
+        let db7 = DotBracketVec::try_from(".(((......)))..(((........)))................").unwrap();
+        let db8 = DotBracketVec::try_from(".(((.(...)))).((((........))))...............").unwrap();
 
         let macrostate = Macrostate::from_list(
             "lmin=lm3_bh=3.0",
             &seq, 
-            &[s1.clone(), s2, s3, s4, s5, s6, s7, s8], 
+            &[db1.clone(), db2, db3, db4, db5, db6, db7, db8], 
             &energy_model
         );
         println!("Macrostate '{}':", macrostate.name());
-        println!("  Ensemble size: {}", macrostate.ensemble().len());
+        println!("  Ensemble size: {}", macrostate.len());
+        assert_eq!(macrostate.len(), 8);
 
         let ensemble = macrostate.ensemble().clone();
         let mut ensemble: Vec<_> = ensemble.iter().collect();
@@ -437,77 +349,46 @@ mod tests {
         for (dbr, (energy, prob)) in ensemble.iter() {
             println!("  {} -> E(s) = {energy}, P(s) = {prob:.4}", dbr);
         }
-        assert_eq!(macrostate.get_energy(&s1), Some(-390));
-        assert!((macrostate.get_probability(&s1).unwrap() - 0.7669).abs() < 1e-4);
 
-        assert_eq!(macrostate.ensemble().len(), 8);
-
-        let neighbors = ExitMacrostate::from((
-            &macrostate, 
-            &seq[..], 
-            &energy_model, 
-            &rate_model
-        ));
-        println!("Neighbors '{}':", neighbors.macrostate.name());
-        println!("  Ensemble size: {}", neighbors.ensemble().len());
-
-        let ensemble = neighbors.ensemble().clone();
-        let mut ensemble: Vec<_> = ensemble.iter().collect();
-        ensemble.sort_by_key(|(_, (energy, _))| *energy);
-        for (dbr, (energy, prob)) in ensemble.iter() {
-            println!("  {} -> E(s) = {energy}, P(s) = {prob:.4}", dbr);
-        }
-
-        assert_eq!(neighbors.ensemble().len(), 345);
+        assert_eq!(macrostate.ensemble().get(&db1).unwrap().0, -390);
+        assert!((macrostate.ensemble().get(&db1).unwrap().1 - 0.7669).abs() < 1e-4);
     }
 
     #[test]
-    fn test_macrostate_registry_init_and_classify() {
-
-        let seq = NucleotideVec::from_lossy("UCAGUCUUCGCUGCGCUGUAUCGAUUCGGUUUCAGUUUUUAUUGC");
+    fn test_macrostateregistry_init_and_classify() {
         let energy_model = ViennaRNA::default();
+        let seq = NucleotideVec::try_from("UCAGUCUUCGCUGCGCUGUAUCGAUUCGGUUUCAGUUUUUAUUGC").unwrap();
 
         let mut registry = MacrostateRegistry::from((&seq, &energy_model));
 
         // By convention: one unassigned macrostate
         assert_eq!(registry.len(), 1);
-        assert_eq!(registry.get(0).name(), "Unassigned");
+        assert_eq!(registry.macrostates()[0].name(), "Unassigned");
+
+        let input = b">test
+        UCAGUCUUCGCUGCGCUGUAUCGAUUCGGUUUCAGUUUUUAUUGC
+        .((((....)))).((((........))))...............
+        .((((....)))).((((.(....).))))...............
+        .((((....))))..(((........)))................
+        ";
+        registry.insert_from_reader(Cursor::new(input), "manual").unwrap();
+        assert_eq!(registry.len(), 2);
 
         // Build a test macrostate with a few structures
         let s1 = DotBracketVec::try_from(".((((....)))).((((........))))...............").unwrap();
+        assert_eq!(registry.classify(&s1), 1);
         let s2 = DotBracketVec::try_from(".((((....)))).((((.(....).))))...............").unwrap();
+        assert_eq!(registry.classify(&s2), 1);
         let s3 = DotBracketVec::try_from(".((((....))))..(((........)))................").unwrap();
+        assert_eq!(registry.classify(&s3), 1);
 
-        let macrostate = Macrostate::from_list(
-            "test",
-            &seq,
-            &[s1.clone(), s2.clone(), s3.clone()],
-            &energy_model,
-        );
-
-        // Manually add to registry
-        registry.macrostates.push(macrostate);
-        assert_eq!(registry.len(), 2);
-
-        // Classification: each structure should be recognized
-        let id_s1 = registry.classify(&s1);
-        let id_s2 = registry.classify(&s2);
-        let id_s3 = registry.classify(&s3);
-
-        assert_eq!(id_s1, 1);
-        assert_eq!(id_s2, 1);
-        assert_eq!(id_s3, 1);
-
-        // Unknown structure → should return 0 ("Unassigned")
-        let unknown = DotBracketVec::try_from("...........................................").unwrap();
-        assert_eq!(registry.classify(&unknown), 0);
+        // Unknown structure: should return 0 ("Unassigned")
+        let s4 = DotBracketVec::try_from("..............").unwrap();
+        assert_eq!(registry.classify(&s4), 0);
 
         // Iteration test
         let all_names: Vec<_> = registry.iter().map(|(_, ms)| ms.name().to_string()).collect();
         assert!(all_names.contains(&"Unassigned".to_string()));
         assert!(all_names.contains(&"test".to_string()));
-
-        println!("Registry initialized with macrostates: {all_names:?}");
     }
-
 }

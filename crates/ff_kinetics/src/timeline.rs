@@ -161,8 +161,8 @@ impl<'a, E: EnergyModel> fmt::Display for Timeline<'a, E> {
 
             // Sort by energy, None last
             entries.sort_by(|(a_idx, _), (b_idx, _)| {
-                let e_a = self.registry.get(*a_idx).ensemble_energy();
-                let e_b = self.registry.get(*b_idx).ensemble_energy(); 
+                let e_a = self.registry.macrostates()[*a_idx].ensemble_energy();
+                let e_b = self.registry.macrostates()[*b_idx].ensemble_energy(); 
                 e_a.partial_cmp(&e_b).unwrap_or(std::cmp::Ordering::Equal)
             });
 
@@ -170,8 +170,8 @@ impl<'a, E: EnergyModel> fmt::Display for Timeline<'a, E> {
             for (m_idx, count) in entries {
                 let occu = count as f64 / total as f64;
 
-                let name = self.registry.get(m_idx).name();
-                let energy = self.registry.get(m_idx).ensemble_energy().unwrap_or(0.0);
+                let name = self.registry.macrostates()[m_idx].name();
+                let energy = self.registry.macrostates()[m_idx].ensemble_energy().unwrap_or(0.0);
 
                 writeln!(
                     f,
