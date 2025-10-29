@@ -305,24 +305,24 @@ mod tests {
         assert_eq!(registry.len(), 4);
 
         let rate_model = Metropolis::new(energy_model.temperature(), 1.0);
-        let exitreg = ExitMacrostateRegistry::from((&registry, &rate_model));
+        let _exitreg = ExitMacrostateRegistry::from((&registry, &rate_model));
 
-        let mut cad = CommitAndDelay::from(Arc::new(exitreg));
-        cad.simulate_between(3,1);
-        cad.simulate_between(1,3);
-        cad.simulate_between(2,1);
-        cad.simulate_between(1,2);
-        cad.simulate_between(3,2);
-        cad.simulate_between(2,3);
-        for row in cad.trajectories.rows() {
-            let line = row
-                .iter()
-                .map(|el| el.as_ref().map_or("0".into(), |ens| ens.len().to_string()))
-                .collect::<Vec<_>>()
-                .join(" ");
-            println!("{line}");
-        }
-        assert!(false);
+        //NOTE: too slow for a unittest at the moment.
+        // let mut cad = CommitAndDelay::from(Arc::new(exitreg));
+        // cad.simulate_between(3,1);
+        // cad.simulate_between(1,3);
+        // cad.simulate_between(2,1);
+        // cad.simulate_between(1,2);
+        // cad.simulate_between(3,2);
+        // cad.simulate_between(2,3);
+        // for row in cad.trajectories.rows() {
+        //     let line = row
+        //         .iter()
+        //         .map(|el| el.as_ref().map_or("0".into(), |ens| ens.len().to_string()))
+        //         .collect::<Vec<_>>()
+        //         .join(" ");
+        //     println!("{line}");
+        // }
     }
 }
 

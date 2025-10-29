@@ -82,7 +82,7 @@ fn main() -> Result<()> {
 
     let times = cli.simulation.get_output_times();
     let mut registry = MacrostateRegistry::from((&sequence, &emodel));
-    registry.insert_files(&cli.macrostates);
+    let _ = registry.insert_files(&cli.macrostates);
 
     println!("Macrostates:\n{}", registry.iter()
         .map(|(_, m)| format!(" - {} {:6.2}", m.name(), m.ensemble_energy().unwrap_or(0.0)))
